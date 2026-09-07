@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shimmer/shimmer.dart';
@@ -341,7 +342,7 @@ class _SearchScreenState extends State<SearchScreen> {
               const SizedBox(height: 12),
 
               // 2. SECTION: DERNIÈRES CHANSONS LUES (Recently Played Songs)
-              _buildRecentlyPlayedSection(isWide),
+              _buildRecentlyPlayedSection(isWide, constraints),
             ],
           ),
         );
@@ -439,7 +440,7 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Widget _buildRecentlyPlayedSection(bool isWide) {
+  Widget _buildRecentlyPlayedSection(bool isWide, BoxConstraints constraints) {
     return ValueListenableBuilder<List<Song>>(
       valueListenable: RecentlyPlayedService.recentSongsNotifier,
       builder: (context, recentSongs, _) {
@@ -555,13 +556,19 @@ class _SearchScreenState extends State<SearchScreen> {
                   ),
                 ),
               )
-            else
-              // Horizontal card carousel for recent songs
-              SizedBox(
-                height: 175,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+            else if (isWide)
+              // Responsive grid for desktop, tablet, and wide displays
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: (constraints.maxWidth / 190).floor().clamp(2, 6),
+                    childAspectRatio: 1.05,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                  ),
                   itemCount: recentSongs.length,
                   itemBuilder: (context, index) {
                     final song = recentSongs[index];
@@ -570,8 +577,38 @@ class _SearchScreenState extends State<SearchScreen> {
                       isPlaying: widget.controller.currentSong?.id == song.id,
                       onTap: () => widget.onSongSelected(song),
                       onDelete: () => RecentlyPlayedService.removeSong(song.id),
+                      isGrid: true,
                     );
                   },
+                ),
+              )
+            else
+              // Horizontal card carousel with touch & mouse drag support for mobile portrait
+              SizedBox(
+                height: 175,
+                child: ScrollConfiguration(
+                  behavior: ScrollConfiguration.of(context).copyWith(
+                    dragDevices: {
+                      PointerDeviceKind.touch,
+                      PointerDeviceKind.mouse,
+                      PointerDeviceKind.trackpad,
+                    },
+                  ),
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: recentSongs.length,
+                    itemBuilder: (context, index) {
+                      final song = recentSongs[index];
+                      return _RecentSongCard(
+                        song: song,
+                        isPlaying: widget.controller.currentSong?.id == song.id,
+                        onTap: () => widget.onSongSelected(song),
+                        onDelete: () => RecentlyPlayedService.removeSong(song.id),
+                        isGrid: false,
+                      );
+                    },
+                  ),
                 ),
               ),
           ],
@@ -580,22 +617,21 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-
-
   Widget _buildResults() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isWide = constraints.maxWidth >= 680;
+        final isWide = constraints.maxWidth >= 600;
 
         return AnimatedBuilder(
           animation: widget.controller,
           builder: (context, child) {
             if (isWide) {
+              final crossAxisCount = (constraints.maxWidth / 320).floor().clamp(2, 4);
               return GridView.builder(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  childAspectRatio: 4.6,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  mainAxisExtent: 78,
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 8,
                 ),
@@ -639,19 +675,21 @@ class _RecentSongCard extends StatelessWidget {
   final bool isPlaying;
   final VoidCallback onTap;
   final VoidCallback onDelete;
+  final bool isGrid;
 
   const _RecentSongCard({
     required this.song,
     required this.isPlaying,
     required this.onTap,
     required this.onDelete,
+    this.isGrid = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 142,
-      margin: const EdgeInsets.only(right: 12),
+      width: isGrid ? null : 144,
+      margin: EdgeInsets.only(right: isGrid ? 0 : 12),
       decoration: BoxDecoration(
         color: const Color(0xFF181818),
         borderRadius: BorderRadius.circular(14),
@@ -681,14 +719,15 @@ class _RecentSongCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Artwork with badge & delete button
-                Stack(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        width: double.infinity,
-                        height: 84,
-                        color: const Color(0xFF222222),
+                Expanded(
+                  child: Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          width: double.infinity,
+                          height: double.infinity,
+                          color: const Color(0xFF222222),
                         child: song.thumbnailUrl != null && !song.isLocal
                             ? CachedNetworkImage(
                                 imageUrl: song.thumbnailUrl!,
@@ -774,6 +813,7 @@ class _RecentSongCard extends StatelessWidget {
                       ),
                   ],
                 ),
+              ),
 
                 const SizedBox(height: 8),
 

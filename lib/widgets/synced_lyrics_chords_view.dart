@@ -77,8 +77,9 @@ class _SyncedLyricsChordsViewState extends State<SyncedLyricsChordsView> {
                   : _buildLyricsPlaceholder(),
             ),
 
-            // ── Bottom Chords Viewer (Tout en bas du lyrics viewer) ────
-            _buildBottomChordsViewer(currentChord, nextChord, allLyrics, currentLyricIndex),
+            // ── Bottom Chords Viewer (Only when showChordsHeader is enabled, e.g. mobile) ────
+            if (widget.showChordsHeader)
+              _buildBottomChordsViewer(currentChord, nextChord, allLyrics, currentLyricIndex),
           ],
         );
       },

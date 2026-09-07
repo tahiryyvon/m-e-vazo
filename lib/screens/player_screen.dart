@@ -97,10 +97,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
               children: [
                 // Left Panel: Scrollable Artwork / Chords + Controls
                 Container(
-                  width: (constraints.maxWidth * 0.40).clamp(270.0, 440.0),
+                  width: (constraints.maxWidth * 0.45).clamp(320.0, 520.0),
                   padding: EdgeInsets.symmetric(
-                    horizontal: isShort ? 12 : 18,
-                    vertical: isShort ? 8 : 14,
+                    horizontal: isShort ? 14 : 20,
+                    vertical: isShort ? 8 : 16,
                   ),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.45),
@@ -117,7 +117,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: isShort ? 15 : 17,
+                            fontSize: isShort ? 15 : 18,
                             fontWeight: FontWeight.w700,
                           ),
                           maxLines: 1,
@@ -140,34 +140,64 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
                         SizedBox(height: isShort ? 4 : 8),
 
-                        // Chords Section
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            ChordDiagram(chord: currentChord, size: isShort ? 75 : 95),
-                            if (nextChord != null) ...[
-                              SizedBox(width: isShort ? 12 : 18),
-                              Column(
-                                mainAxisSize: MainAxisSize.min,
+                        // Enlarged Chords Visualizer Section
+                        Container(
+                          margin: EdgeInsets.symmetric(vertical: isShort ? 4 : 8),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isShort ? 10 : 16,
+                            vertical: isShort ? 8 : 14,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.03),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: const Color(0xFFFF8C00).withValues(alpha: 0.22),
+                              width: 1.2,
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                'ACCORD ACTUEL',
+                                style: TextStyle(
+                                  fontSize: isShort ? 9 : 11,
+                                  color: const Color(0xFFFF8C00),
+                                  letterSpacing: 2,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              SizedBox(height: isShort ? 6 : 10),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
-                                  Text(
-                                    'NEXT',
-                                    style: TextStyle(
-                                      fontSize: 8,
-                                      color: Colors.white.withValues(alpha: 0.35),
-                                      letterSpacing: 1.5,
+                                  ChordDiagram(chord: currentChord, size: isShort ? 105 : 140),
+                                  if (nextChord != null) ...[
+                                    SizedBox(width: isShort ? 16 : 24),
+                                    Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          'SUIVANT',
+                                          style: TextStyle(
+                                            fontSize: 9,
+                                            color: Colors.white.withValues(alpha: 0.4),
+                                            letterSpacing: 1.5,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Opacity(
+                                          opacity: 0.55,
+                                          child: ChordDiagram(chord: nextChord, size: isShort ? 68 : 88),
+                                        ),
+                                      ],
                                     ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Opacity(
-                                    opacity: 0.5,
-                                    child: ChordDiagram(chord: nextChord, size: isShort ? 50 : 65),
-                                  ),
+                                  ],
                                 ],
                               ),
                             ],
-                          ],
+                          ),
                         ),
 
                         SizedBox(height: isShort ? 6 : 12),
