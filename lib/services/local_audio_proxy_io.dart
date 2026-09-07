@@ -135,7 +135,7 @@ class LocalAudioProxy {
 
       final contentType = selectedStream.container.name.toLowerCase() == 'webm'
           ? 'audio/webm'
-          : 'video/mp4';
+          : 'audio/mp4';
 
       // Media player sends HEAD request first to detect format and duration
       if (request.method == 'HEAD') {
@@ -154,11 +154,21 @@ class LocalAudioProxy {
       ytRequest.headers['User-Agent'] =
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-      ytRequest.headers['Range'] = clientRange ?? 'bytes=0-';
+      if (clientRange != null && clientRange.isNotEmpty) {
+        ytRequest.headers['Range'] = clientRange;
+      }
 
       final client = http.Client();
       final streamedResponse = await client.send(ytRequest);
       debugPrint('[LocalAudioProxy] Upstream YouTube status: ${streamedResponse.statusCode}, contentLength: ${streamedResponse.contentLength}, contentRange: ${streamedResponse.headers["content-range"]}');
+
+      if (streamedResponse.statusCode != HttpStatus.ok &&
+          streamedResponse.statusCode != HttpStatus.partialContent) {
+        debugPrint('[LocalAudioProxy] Upstream error status: ${streamedResponse.statusCode}');
+        request.response.statusCode = streamedResponse.statusCode;
+        try { await request.response.close(); } catch (_) {}
+        return;
+      }
 
       request.response.statusCode = streamedResponse.statusCode;
       request.response.headers.set(HttpHeaders.contentTypeHeader, contentType);

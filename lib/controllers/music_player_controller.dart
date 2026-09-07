@@ -471,27 +471,56 @@ class MusicPlayerController extends ChangeNotifier {
       } else if (!kIsWeb &&
           (defaultTargetPlatform == TargetPlatform.android ||
               defaultTargetPlatform == TargetPlatform.iOS)) {
-        final streamUrl = await _youtubeService.getAudioStreamUrl(song.id);
-        if (streamUrl == null) {
-          _errorMessage = "Impossible d'extraire le flux audio pour cette chanson.";
-          _updateState(PlaybackState.error);
-          return;
-        }
-        await _audioPlayer!.stop();
-        await _audioPlayer!.setAudioSource(
-          AudioSource.uri(
-            Uri.parse(streamUrl),
-            tag: MediaItem(
-              id: song.id,
-              title: song.title,
-              artist: song.artist,
-              artUri: song.thumbnailUrl != null ? Uri.parse(song.thumbnailUrl!) : null,
+        // Mobile playback: use local proxy streaming for instant start,
+        // and seamlessly fall back to chunked file download if upstream streaming fails.
+        bool playbackStarted = false;
+        try {
+          final proxyUrl = await LocalAudioProxy.instance.getProxyStreamUrl(song.id);
+          debugPrint('[MusicPlayerController] Streaming via proxy+just_audio: $proxyUrl');
+          await _audioPlayer!.stop();
+          await _audioPlayer!.setAudioSource(
+            AudioSource.uri(
+              Uri.parse(proxyUrl),
+              tag: MediaItem(
+                id: song.id,
+                title: song.title,
+                artist: song.artist,
+                artUri: song.thumbnailUrl != null ? Uri.parse(song.thumbnailUrl!) : null,
+              ),
             ),
-          ),
-        );
-        await _audioPlayer!.play();
-        _updateState(PlaybackState.playing);
-        _startSyncLoop();
+          );
+          await _audioPlayer!.play();
+          playbackStarted = true;
+          _updateState(PlaybackState.playing);
+          _startSyncLoop();
+        } catch (proxyError) {
+          debugPrint('[MusicPlayerController] Mobile proxy streaming failed: $proxyError. Trying download fallback...');
+        }
+
+        if (!playbackStarted) {
+          final tmpFile = await _youtubeService.downloadToTempFile(song.id);
+          if (tmpFile == null || !tmpFile.existsSync()) {
+            _errorMessage = "Impossible de charger l'audio pour cette chanson.";
+            _updateState(PlaybackState.error);
+            return;
+          }
+          debugPrint('[MusicPlayerController] Playing downloaded temp file: ${tmpFile.path}');
+          await _audioPlayer!.stop();
+          await _audioPlayer!.setAudioSource(
+            AudioSource.file(
+              tmpFile.path,
+              tag: MediaItem(
+                id: song.id,
+                title: song.title,
+                artist: song.artist,
+                artUri: song.thumbnailUrl != null ? Uri.parse(song.thumbnailUrl!) : null,
+              ),
+            ),
+          );
+          await _audioPlayer!.play();
+          _updateState(PlaybackState.playing);
+          _startSyncLoop();
+        }
       } else {
         // Web / fallback
         final streamUrl = await _youtubeService.getAudioStreamUrl(song.id);

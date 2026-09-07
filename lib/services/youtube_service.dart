@@ -254,8 +254,9 @@ class YoutubeService {
       _log('Downloading ${streamInfo.bitrate.kiloBitsPerSecond.toStringAsFixed(0)} kbps '
           '${streamInfo.container.name} stream for $videoId');
 
+      final ext = streamInfo.container.name.toLowerCase() == 'webm' ? 'webm' : 'm4a';
       final tmpDir = Directory.systemTemp;
-      final tmpFile = File('${tmpDir.path}/me_vazo_$videoId.m4a');
+      final tmpFile = File('${tmpDir.path}/me_vazo_$videoId.$ext');
 
       // Delete stale file if exists
       if (tmpFile.existsSync()) {
