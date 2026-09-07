@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
@@ -40,12 +41,12 @@ class LocalAudioProxy {
     try {
       _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       _port = _server!.port;
-      print('[LocalAudioProxy] Started on http://127.0.0.1:$_port');
+      debugPrint('[LocalAudioProxy] Started on http://127.0.0.1:$_port');
       _server!.listen(_handleRequest, onError: (e) {
-        print('[LocalAudioProxy] Server error: $e');
+        debugPrint('[LocalAudioProxy] Server error: $e');
       });
     } catch (e) {
-      print('[LocalAudioProxy] Failed to bind server: $e');
+      debugPrint('[LocalAudioProxy] Failed to bind server: $e');
     } finally {
       _isStarting = false;
     }
@@ -98,7 +99,7 @@ class LocalAudioProxy {
 
         return null;
       } catch (e) {
-        print('[LocalAudioProxy] Error getting manifest for $videoId: $e');
+        debugPrint('[LocalAudioProxy] Error getting manifest for $videoId: $e');
         return null;
       } finally {
         _inFlightFetches.remove(videoId);
@@ -115,7 +116,7 @@ class LocalAudioProxy {
     final videoId = match?.group(1);
     final clientRange = request.headers.value('range');
 
-    print('[LocalAudioProxy] >>> Incoming ${request.method} $path (Range: $clientRange)');
+    debugPrint('[LocalAudioProxy] >>> Incoming ${request.method} $path (Range: $clientRange)');
 
     if (videoId == null || videoId.isEmpty) {
       request.response.statusCode = HttpStatus.notFound;
@@ -126,7 +127,7 @@ class LocalAudioProxy {
     try {
       final selectedStream = await _getStreamInfo(videoId);
       if (selectedStream == null) {
-        print('[LocalAudioProxy] Stream info null for $videoId');
+        debugPrint('[LocalAudioProxy] Stream info null for $videoId');
         request.response.statusCode = HttpStatus.notFound;
         try { await request.response.close(); } catch (_) {}
         return;
@@ -138,7 +139,7 @@ class LocalAudioProxy {
 
       // Media player sends HEAD request first to detect format and duration
       if (request.method == 'HEAD') {
-        print('[LocalAudioProxy] Responding to HEAD with size ${selectedStream.size.totalBytes}');
+        debugPrint('[LocalAudioProxy] Responding to HEAD with size ${selectedStream.size.totalBytes}');
         request.response.statusCode = HttpStatus.ok;
         request.response.headers.set(HttpHeaders.contentTypeHeader, contentType);
         request.response.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
@@ -157,7 +158,7 @@ class LocalAudioProxy {
 
       final client = http.Client();
       final streamedResponse = await client.send(ytRequest);
-      print('[LocalAudioProxy] Upstream YouTube status: ${streamedResponse.statusCode}, contentLength: ${streamedResponse.contentLength}, contentRange: ${streamedResponse.headers["content-range"]}');
+      debugPrint('[LocalAudioProxy] Upstream YouTube status: ${streamedResponse.statusCode}, contentLength: ${streamedResponse.contentLength}, contentRange: ${streamedResponse.headers["content-range"]}');
 
       request.response.statusCode = streamedResponse.statusCode;
       request.response.headers.set(HttpHeaders.contentTypeHeader, contentType);
@@ -181,16 +182,16 @@ class LocalAudioProxy {
           request.response.add(chunk);
           await request.response.flush();
         }
-        print('[LocalAudioProxy] Successfully sent $totalBytesSent bytes to client');
+        debugPrint('[LocalAudioProxy] Successfully sent $totalBytesSent bytes to client');
       } catch (e) {
-        print('[LocalAudioProxy] Client disconnected after $totalBytesSent bytes ($e)');
+        debugPrint('[LocalAudioProxy] Client disconnected after $totalBytesSent bytes ($e)');
       } finally {
         client.close();
       }
 
       try { await request.response.close(); } catch (_) {}
     } catch (e) {
-      print('[LocalAudioProxy] Stream proxy error for $videoId: $e');
+      debugPrint('[LocalAudioProxy] Stream proxy error for $videoId: $e');
       try {
         request.response.statusCode = HttpStatus.internalServerError;
         await request.response.close();
