@@ -1,0 +1,59 @@
+name: guitar_lyrics_player
+description: "Multiplatform YouTube music player with synchronized lyrics (LRCLIB) and guitar chords (Songsterr). Supports Android, Windows, macOS, Linux, iOS and Web."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Audio playback (multiplatform)
+  just_audio: ^0.9.42
+  just_audio_background: ^0.0.1-beta.14
+
+  # media_kit for Windows audio (libmpv - no WMF restrictions)
+  media_kit: ^1.1.11
+  media_kit_libs_windows_audio: ^1.0.3
+  media_kit_native_event_loop: ^1.0.9
+
+  # YouTube audio stream extraction & search
+  youtube_explode_dart: ^3.1.0
+
+  # HTTP networking
+  http: ^1.2.1
+
+  # State management
+  flutter_riverpod: ^2.5.1
+
+  # UI utilities
+  cached_network_image: ^3.3.1
+  shimmer: ^3.0.0
+  google_fonts: ^6.2.1
+
+  # Stream handling for sync
+  rxdart: ^0.27.7
+
+  # Local file picker for local music library
+  file_picker: ^8.0.0
+
+  # Local storage (cache lyrics/chords)
+  shared_preferences: ^2.2.3
+  path: ^1.9.0
+
+  # Permissions (Android local file access)
+  permission_handler: ^11.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/audio/
+
