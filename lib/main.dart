@@ -9,8 +9,10 @@ import 'screens/home_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize media_kit (required before using Player)
-  MediaKit.ensureInitialized();
+  // Initialize media_kit on Windows desktop (media_kit_libs_windows_audio)
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+    MediaKit.ensureInitialized();
+  }
 
   // Initialize background audio service on supported mobile platforms
   if (!kIsWeb &&

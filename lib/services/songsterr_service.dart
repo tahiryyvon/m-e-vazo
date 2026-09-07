@@ -625,14 +625,12 @@ class SongsterrService {
             chordName: chord1,
             durationMs: halfDuration,
             fretPositions: standardChordPositions[chord1],
-            lyricLineIndex: i,
           ));
           events.add(ChordEvent(
             timestamp: line.timestamp + Duration(milliseconds: halfDuration),
             chordName: chord2,
             durationMs: halfDuration,
             fretPositions: standardChordPositions[chord2],
-            lyricLineIndex: i,
           ));
         } else {
           events.add(ChordEvent(
@@ -640,7 +638,6 @@ class SongsterrService {
             chordName: chord1,
             durationMs: lineDuration,
             fretPositions: standardChordPositions[chord1],
-            lyricLineIndex: i,
           ));
         }
       }

@@ -332,24 +332,21 @@ class MusicPlayerController extends ChangeNotifier {
         _tuning = 'Standard (E A D G B E)';
         _capo = null;
         _lyrics = [
-          LyricLine(timestamp: const Duration(seconds: 0), text: "Introduction acoustique [Sol Majeur / G]"),
-          LyricLine(timestamp: const Duration(seconds: 3), text: "Douce résonance de la corde grave [Mi Mineur / Em]"),
-          LyricLine(timestamp: const Duration(seconds: 6), text: "L'arpège s'ouvre vers la clarté [Do Majeur / C]"),
-          LyricLine(timestamp: const Duration(seconds: 9), text: "La cadence résout avec énergie [Ré Majeur / D]"),
-          LyricLine(timestamp: const Duration(seconds: 12), text: "Deuxième cycle : retour au thème [Sol Majeur / G]"),
-          LyricLine(timestamp: const Duration(seconds: 15), text: "Profondeur des vibrations intimes [Mi Mineur / Em]"),
-          LyricLine(timestamp: const Duration(seconds: 18), text: "L'accord monte en intensité [Do Majeur / C]"),
-          LyricLine(timestamp: const Duration(seconds: 21), text: "Finale acoustique harmonieuse [Ré Majeur / D]"),
+          LyricLine(timestamp: const Duration(seconds: 0), text: "Morceau de démonstration - Guitare Acoustique"),
+          LyricLine(timestamp: const Duration(seconds: 3), text: "Les cordes résonnent avec clarté [Sol Majeur]"),
+          LyricLine(timestamp: const Duration(seconds: 6), text: "Douce vibration d'un accord en bois [Mi Mineur]"),
+          LyricLine(timestamp: const Duration(seconds: 9), text: "Le rythme de la guitare acoustique [Do Majeur]"),
+          LyricLine(timestamp: const Duration(seconds: 12), text: "Une mélodie pure et harmonieuse [Ré Majeur]"),
+          LyricLine(timestamp: const Duration(seconds: 15), text: "Arpège joué note après note [Sol Majeur]"),
+          LyricLine(timestamp: const Duration(seconds: 18), text: "Les accords s'enchaînent parfaitement [Mi Mineur]"),
+          LyricLine(timestamp: const Duration(seconds: 21), text: "Écoutez chaque nuance acoustique [Do Majeur]"),
+          LyricLine(timestamp: const Duration(seconds: 24), text: "Fin de la démonstration musicale [Ré Majeur]"),
         ];
         _chords = [
-          ChordEvent(timestamp: const Duration(seconds: 0), chordName: 'G', durationMs: 3000, fretPositions: [3, 2, 0, 0, 0, 3], lyricLineIndex: 0),
-          ChordEvent(timestamp: const Duration(seconds: 3), chordName: 'Em', durationMs: 3000, fretPositions: [0, 2, 2, 0, 0, 0], lyricLineIndex: 1),
-          ChordEvent(timestamp: const Duration(seconds: 6), chordName: 'C', durationMs: 3000, fretPositions: [-1, 3, 2, 0, 1, 0], lyricLineIndex: 2),
-          ChordEvent(timestamp: const Duration(seconds: 9), chordName: 'D', durationMs: 3000, fretPositions: [-1, -1, 0, 2, 3, 2], lyricLineIndex: 3),
-          ChordEvent(timestamp: const Duration(seconds: 12), chordName: 'G', durationMs: 3000, fretPositions: [3, 2, 0, 0, 0, 3], lyricLineIndex: 4),
-          ChordEvent(timestamp: const Duration(seconds: 15), chordName: 'Em', durationMs: 3000, fretPositions: [0, 2, 2, 0, 0, 0], lyricLineIndex: 5),
-          ChordEvent(timestamp: const Duration(seconds: 18), chordName: 'C', durationMs: 3000, fretPositions: [-1, 3, 2, 0, 1, 0], lyricLineIndex: 6),
-          ChordEvent(timestamp: const Duration(seconds: 21), chordName: 'D', durationMs: 3000, fretPositions: [-1, -1, 0, 2, 3, 2], lyricLineIndex: 7),
+          ChordEvent(timestamp: const Duration(seconds: 0), chordName: 'G', fretPositions: [3, 2, 0, 0, 0, 3]),
+          ChordEvent(timestamp: const Duration(seconds: 6), chordName: 'Em', fretPositions: [0, 2, 2, 0, 0, 0]),
+          ChordEvent(timestamp: const Duration(seconds: 12), chordName: 'C', fretPositions: [-1, 3, 2, 0, 1, 0]),
+          ChordEvent(timestamp: const Duration(seconds: 18), chordName: 'D', fretPositions: [-1, -1, 0, 2, 3, 2]),
         ];
         _isLoadingMetadata = false;
         notifyListeners();
@@ -644,12 +641,9 @@ class MusicPlayerController extends ChangeNotifier {
   void _syncLyrics(Duration position) {
     if (_lyrics == null || _lyrics!.isEmpty) return;
 
-    // 120ms lead-in anticipation for vocal onset & smoother UI tracking
-    final effectivePosition = position + const Duration(milliseconds: 120);
-
     int newIndex = -1;
     for (int i = _lyrics!.length - 1; i >= 0; i--) {
-      if (_lyrics![i].timestamp <= effectivePosition) {
+      if (_lyrics![i].timestamp <= position) {
         newIndex = i;
         break;
       }
@@ -665,10 +659,8 @@ class MusicPlayerController extends ChangeNotifier {
   void _syncChords(Duration position) {
     if (_chords == null || _chords!.isEmpty) return;
 
-    // Musician anticipation: 150ms lead-in allows the player to read the fretboard diagram
-    // right before or at downbeat attack, compensating for OS audio buffer & MPV stream granularity.
-    // _chordOffsetMs (+ advances, - delays) allows user fine-tuning in UI.
-    final effectivePosition = position + Duration(milliseconds: 150 + _chordOffsetMs);
+    // Compensate for premature lyric timing so chords trigger exactly on the beat
+    final effectivePosition = position - Duration(milliseconds: _chordOffsetMs);
     if (effectivePosition < Duration.zero) {
       if (_currentChordIndex != 0) {
         _currentChordIndex = 0;

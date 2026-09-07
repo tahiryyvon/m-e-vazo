@@ -61,6 +61,7 @@ class _SyncedLyricsChordsViewState extends State<SyncedLyricsChordsView> {
     return AnimatedBuilder(
       animation: widget.controller,
       builder: (context, _) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _maybeScrollToActive());
         final currentChord = widget.controller.currentChord;
         final nextChord = widget.controller.nextChord;
         final allLyrics = widget.controller.lyrics;
@@ -170,10 +171,7 @@ class _SyncedLyricsChordsViewState extends State<SyncedLyricsChordsView> {
             ? (lyrics[index + 1].timestamp as Duration)
             : lineStart + const Duration(seconds: 4);
         final lineChords = widget.controller.chords?.where((c) =>
-          c.lyricLineIndex == index ||
-          (c.lyricLineIndex == null &&
-              c.timestamp >= lineStart - const Duration(milliseconds: 250) &&
-              c.timestamp < lineEnd - const Duration(milliseconds: 250))
+          c.timestamp >= lineStart && c.timestamp < lineEnd
         ).toList() ?? [];
 
         return InkWell(
@@ -201,10 +199,7 @@ class _SyncedLyricsChordsViewState extends State<SyncedLyricsChordsView> {
                     alignment: WrapAlignment.center,
                     spacing: 8,
                     children: lineChords.map((c) {
-                      final isActiveChord = isCurrent &&
-                          (c == currentChord ||
-                           (c.chordName == currentChord?.chordName &&
-                            (currentChord == null || (c.timestamp - currentChord.timestamp).inMilliseconds.abs() < 700)));
+                      final isActiveChord = isCurrent && c.chordName == currentChord?.chordName;
                       return Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
