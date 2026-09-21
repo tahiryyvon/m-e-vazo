@@ -556,36 +556,11 @@ class _SearchScreenState extends State<SearchScreen> {
                   ),
                 ),
               )
-            else if (isWide)
-              // Responsive grid for desktop, tablet, and wide displays
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: (constraints.maxWidth / 190).floor().clamp(2, 6),
-                    childAspectRatio: 1.05,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                  ),
-                  itemCount: recentSongs.length,
-                  itemBuilder: (context, index) {
-                    final song = recentSongs[index];
-                    return _RecentSongCard(
-                      song: song,
-                      isPlaying: widget.controller.currentSong?.id == song.id,
-                      onTap: () => widget.onSongSelected(song),
-                      onDelete: () => RecentlyPlayedService.removeSong(song.id),
-                      isGrid: true,
-                    );
-                  },
-                ),
-              )
             else
-              // Horizontal card carousel with touch & mouse drag support for mobile portrait
+              // Horizontal carousel — scrollable à la souris, trackpad et touch
+              // sur toutes les tailles d'écran (mobile, tablette, bureau)
               SizedBox(
-                height: 175,
+                height: 180,
                 child: ScrollConfiguration(
                   behavior: ScrollConfiguration.of(context).copyWith(
                     dragDevices: {
@@ -605,7 +580,6 @@ class _SearchScreenState extends State<SearchScreen> {
                         isPlaying: widget.controller.currentSong?.id == song.id,
                         onTap: () => widget.onSongSelected(song),
                         onDelete: () => RecentlyPlayedService.removeSong(song.id),
-                        isGrid: false,
                       );
                     },
                   ),
@@ -675,21 +649,19 @@ class _RecentSongCard extends StatelessWidget {
   final bool isPlaying;
   final VoidCallback onTap;
   final VoidCallback onDelete;
-  final bool isGrid;
 
   const _RecentSongCard({
     required this.song,
     required this.isPlaying,
     required this.onTap,
     required this.onDelete,
-    this.isGrid = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: isGrid ? null : 144,
-      margin: EdgeInsets.only(right: isGrid ? 0 : 12),
+      width: 144,
+      margin: const EdgeInsets.only(right: 12),
       decoration: BoxDecoration(
         color: const Color(0xFF181818),
         borderRadius: BorderRadius.circular(14),
@@ -718,16 +690,14 @@ class _RecentSongCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Artwork with badge & delete button
-                Expanded(
+                // Artwork avec badge & bouton supprimer — hauteur fixe
+                SizedBox(
+                  height: 104,
                   child: Stack(
+                    fit: StackFit.expand,
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(10),
-                        child: Container(
-                          width: double.infinity,
-                          height: double.infinity,
-                          color: const Color(0xFF222222),
                         child: song.thumbnailUrl != null && !song.isLocal
                             ? CachedNetworkImage(
                                 imageUrl: song.thumbnailUrl!,
@@ -751,69 +721,68 @@ class _RecentSongCard extends StatelessWidget {
                                 ),
                               ),
                       ),
-                    ),
 
-                    // Quick Play Icon Overlay (bottom-right of thumbnail)
-                    Positioned(
-                      bottom: 6,
-                      right: 6,
-                      child: Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFF8C00),
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.5),
-                              blurRadius: 4,
-                            ),
-                          ],
-                        ),
-                        child: Icon(
-                          isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                          size: 14,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-
-                    // Delete X button (top-right of thumbnail)
-                    Positioned(
-                      top: 4,
-                      right: 4,
-                      child: GestureDetector(
-                        onTap: onDelete,
+                      // Quick Play Icon Overlay (bottom-right)
+                      Positioned(
+                        bottom: 6,
+                        right: 6,
                         child: Container(
-                          padding: const EdgeInsets.all(4),
+                          padding: const EdgeInsets.all(6),
                           decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.75),
+                            color: const Color(0xFFFF8C00),
                             shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.5),
+                                blurRadius: 4,
+                              ),
+                            ],
                           ),
-                          child: const Icon(Icons.close_rounded, size: 12, color: Colors.white70),
+                          child: Icon(
+                            isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                            size: 14,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
-                    ),
 
-                    // Source badge (Local / YouTube)
-                    if (song.isLocal)
+                      // Delete X button (top-right)
                       Positioned(
                         top: 4,
-                        left: 4,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFF8C00).withValues(alpha: 0.85),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Text(
-                            'LOCAL',
-                            style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w800),
+                        right: 4,
+                        child: GestureDetector(
+                          onTap: onDelete,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.75),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.close_rounded, size: 12, color: Colors.white70),
                           ),
                         ),
                       ),
-                  ],
+
+                      // Badge LOCAL
+                      if (song.isLocal)
+                        Positioned(
+                          top: 4,
+                          left: 4,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFF8C00).withValues(alpha: 0.85),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'LOCAL',
+                              style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w800),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
 
                 const SizedBox(height: 8),
 
