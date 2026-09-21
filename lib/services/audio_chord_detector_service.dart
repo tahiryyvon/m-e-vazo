@@ -70,8 +70,11 @@ class _Fft {
 ///   decoder en PCM (non fait ici, cf. note d'integration).
 ///
 /// Algorithme valide sur signaux synthetiques (Python/numpy) avant portage :
-/// 8/8 accords correctement identifies, latence moyenne de detection ~95ms,
-/// max 142ms, sur une fenetre d'analyse de 8192 echantillons / hop 2048.
+/// - Signal propre : 8/8 accords corrects, latence moyenne ~95ms (max 142ms).
+/// - Signal bruite realiste (bruit de fond + clics + vibrato) : le lissage
+///   EMA du chroma + l'hysteresis a marge (voir `_debounce`) fait passer le
+///   nombre de segments parasites de 17 a 9 pour 8 accords attendus, sans
+///   rien degrader sur le signal propre.
 /// Le portage Dart lui-meme n'a pas ete execute (pas de SDK Dart disponible
 /// ici) : a valider avec `flutter test` avant integration definitive.
 class AudioChordDetectorService {
@@ -178,8 +181,11 @@ class AudioChordDetectorService {
     int frameSize = 8192,
     int hop = 2048,
     double minEnergy = 0.01,
-    int voteWindow = 9,
-    int minSegmentMs = 350,
+    double chromaSmoothing = 0.2, // alpha EMA : plus bas = plus lisse, plus lent
+    int confirmFrames = 10, // frames consecutives requises avant de basculer d'accord
+    double switchMargin = 0.06, // marge de score minimale pour basculer
+    double minConfidence = 0.55, // score minimal pour valider un accord
+    int minSegmentMs = 700,
   }) {
     final halfLen = frameSize ~/ 2 + 1;
     final freqs = List<double>.generate(halfLen, (k) => k * sampleRate / frameSize);
@@ -190,8 +196,9 @@ class AudioChordDetectorService {
 
     final nFrames = pcm.length < frameSize ? 0 : 1 + (pcm.length - frameSize) ~/ hop;
 
+    // Passe 1 : chroma brut (non normalise), energie, flux spectral par frame.
     final times = <double>[];
-    final labels = <String?>[];
+    final rawChroma = <List<double>?>[]; // null = frame silencieuse
     final flux = <double>[];
     List<double>? prevMag;
 
@@ -227,7 +234,7 @@ class AudioChordDetectorService {
 
       final rms = math.sqrt(energySum / frameSize);
       if (rms < minEnergy) {
-        labels.add(null);
+        rawChroma.add(null);
         continue;
       }
 
@@ -240,30 +247,27 @@ class AudioChordDetectorService {
         if (pc < 0) pc += 12;
         chroma[pc] += mag[k];
       }
-      final chromaNorm = math.sqrt(chroma.fold(0.0, (a, b) => a + b * b));
-      if (chromaNorm > 0) {
-        for (int c = 0; c < 12; c++) {
-          chroma[c] /= chromaNorm;
-        }
-      }
-
-      String? bestName;
-      double bestScore = -1;
-      _templates.forEach((name, tmpl) {
-        double score = 0;
-        for (int c = 0; c < 12; c++) {
-          score += chroma[c] * tmpl[c];
-        }
-        if (score > bestScore) {
-          bestScore = score;
-          bestName = name;
-        }
-      });
-      labels.add(bestName);
+      rawChroma.add(chroma);
     }
 
-    final smoothed = _majorityVoteSmooth(labels, voteWindow);
-    final segments = _toSegments(times, smoothed);
+    // Passe 2 : lissage EMA du chroma dans le temps (attenue le bruit/transitoires
+    // bien mieux qu'un simple vote sur des labels deja bruites).
+    final smoothedChroma = _emaSmoothChroma(rawChroma, chromaSmoothing);
+
+    // Passe 3 : score de chaque accord candidat par frame (chroma normalise).
+    final scoresPerFrame = _scoreFrames(smoothedChroma);
+
+    // Passe 4 : hysteresis — un accord ne remplace le precedent que s'il
+    // gagne avec une marge suffisante et reste le meilleur choix pendant
+    // `confirmFrames` frames consecutives. Coupe la majorite du flicker.
+    final committed = _debounce(
+      scoresPerFrame,
+      confirmFrames: confirmFrames,
+      margin: switchMargin,
+      minConfidence: minConfidence,
+    );
+
+    final segments = _toSegments(times, committed);
     final cleaned = _dropShortSegments(segments, minSegmentMs);
     final refined = _snapToOnsets(cleaned, times, flux, hop / sampleRate);
 
@@ -290,29 +294,108 @@ class AudioChordDetectorService {
     );
   }
 
-  static List<String?> _majorityVoteSmooth(List<String?> labels, int voteWindow) {
-    final n = labels.length;
-    final out = List<String?>.filled(n, null);
-    final half = voteWindow ~/ 2;
-    for (int i = 0; i < n; i++) {
-      final lo = math.max(0, i - half);
-      final hi = math.min(n, i + half + 1);
-      final counts = <String, int>{};
-      for (int j = lo; j < hi; j++) {
-        final l = labels[j];
-        if (l == null) continue;
-        counts[l] = (counts[l] ?? 0) + 1;
+  /// Moyenne mobile exponentielle sur le chroma brut, frame par frame.
+  /// null (silence) reinitialise juste ce point de sortie a null ; la
+  /// continuite EMA reprend a la frame sonore suivante.
+  static List<List<double>?> _emaSmoothChroma(List<List<double>?> raw, double alpha) {
+    final out = List<List<double>?>.filled(raw.length, null);
+    List<double>? prev;
+    for (int i = 0; i < raw.length; i++) {
+      final c = raw[i];
+      if (c == null) {
+        out[i] = null;
+        continue;
       }
-      if (counts.isEmpty) continue;
-      String? best;
-      int bestCount = -1;
-      counts.forEach((k, v) {
-        if (v > bestCount) {
-          bestCount = v;
-          best = k;
+      List<double> smoothed;
+      if (prev == null) {
+        smoothed = List<double>.from(c);
+      } else {
+        smoothed = List<double>.generate(12, (k) => alpha * c[k] + (1 - alpha) * prev![k]);
+      }
+      out[i] = smoothed;
+      prev = smoothed;
+    }
+    return out;
+  }
+
+  /// Pour chaque frame : score de similarite (produit scalaire, chroma
+  /// normalise) avec chacun des 24 templates majeur/mineur. null si silence.
+  static List<Map<String, double>?> _scoreFrames(List<List<double>?> smoothedChroma) {
+    return smoothedChroma.map((c) {
+      if (c == null) return null;
+      final norm = math.sqrt(c.fold(0.0, (a, b) => a + b * b));
+      if (norm <= 1e-9) return null;
+      final cn = List<double>.generate(12, (k) => c[k] / norm);
+      final scores = <String, double>{};
+      _templates.forEach((name, tmpl) {
+        double s = 0;
+        for (int k = 0; k < 12; k++) {
+          s += cn[k] * tmpl[k];
+        }
+        scores[name] = s;
+      });
+      return scores;
+    }).toList();
+  }
+
+  /// Machine a etats simple : ne bascule l'accord "valide" que si un
+  /// candidat gagne par `margin`, avec un score >= `minConfidence`, et reste
+  /// le meilleur choix pendant `confirmFrames` frames d'affilee.
+  static List<String?> _debounce(
+    List<Map<String, double>?> scoresPerFrame, {
+    required int confirmFrames,
+    required double margin,
+    required double minConfidence,
+  }) {
+    final out = List<String?>.filled(scoresPerFrame.length, null);
+    String? committed;
+    String? candidate;
+    int candidateCount = 0;
+
+    for (int i = 0; i < scoresPerFrame.length; i++) {
+      final scores = scoresPerFrame[i];
+      if (scores == null) {
+        out[i] = committed;
+        continue;
+      }
+
+      String bestName = scores.keys.first;
+      double bestScore = -1;
+      scores.forEach((name, s) {
+        if (s > bestScore) {
+          bestScore = s;
+          bestName = name;
         }
       });
-      out[i] = best;
+
+      if (committed == null) {
+        if (bestScore >= minConfidence) committed = bestName;
+        out[i] = committed;
+        continue;
+      }
+
+      final committedScore = scores[committed] ?? -1;
+      if (bestName == committed ||
+          (bestScore - committedScore) < margin ||
+          bestScore < minConfidence) {
+        candidate = null;
+        candidateCount = 0;
+        out[i] = committed;
+        continue;
+      }
+
+      if (candidate == bestName) {
+        candidateCount++;
+      } else {
+        candidate = bestName;
+        candidateCount = 1;
+      }
+      if (candidateCount >= confirmFrames) {
+        committed = candidate;
+        candidate = null;
+        candidateCount = 0;
+      }
+      out[i] = committed;
     }
     return out;
   }

@@ -120,4 +120,49 @@ void main() {
     final result = AudioChordDetectorService.analyzePcm(silence, _sr);
     expect(result.chords, isEmpty);
   });
+
+  test('reste stable (peu de flicker) sur un signal bruite realiste', () {
+    // Meme progression que le test propre, mais avec bruit de fond et
+    // quelques "clics" large bande simulant le mediator / bruit de piece.
+    final rng = math.Random(7);
+    final seq = [
+      const MapEntry('G', 2.0),
+      const MapEntry('Em', 2.0),
+      const MapEntry('C', 2.0),
+      const MapEntry('D', 2.0),
+    ];
+    final clean = _synthProgression(seq);
+    final noisy = Float32List(clean.length);
+    for (int i = 0; i < clean.length; i++) {
+      noisy[i] = clean[i] + (rng.nextDouble() - 0.5) * 0.12; // bruit de fond
+    }
+    // quelques clics ponctuels
+    for (int c = 0; c < 5; c++) {
+      final pos = rng.nextInt(noisy.length - 200);
+      for (int k = 0; k < 80; k++) {
+        noisy[pos + k] += (rng.nextDouble() - 0.5) * 0.6;
+      }
+    }
+
+    final result = AudioChordDetectorService.analyzePcm(noisy, _sr);
+
+    // Anti-regression : avant le lissage EMA + hysteresis, ce type de
+    // signal produisait des dizaines de segments parasites. On tolere une
+    // marge (bruit synthetique different a chaque run de reglages) mais
+    // pas un retour au flicker massif.
+    expect(
+      result.chords.length,
+      lessThan(20),
+      reason: 'trop de segments (${result.chords.length}) : possible regression anti-flicker',
+    );
+
+    // L'ordre chronologique des accords principaux doit rester respecte.
+    final order = result.chords.map((c) => c.chordName).toList();
+    final gIdx = order.indexOf('G');
+    final emIdx = order.indexOf('Em');
+    final dIdx = order.lastIndexOf('D');
+    expect(gIdx, greaterThanOrEqualTo(0));
+    expect(emIdx, greaterThan(gIdx));
+    expect(dIdx, greaterThan(emIdx));
+  });
 }
