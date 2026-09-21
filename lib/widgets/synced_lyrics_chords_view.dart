@@ -26,6 +26,9 @@ class SyncedLyricsChordsView extends StatefulWidget {
 class _SyncedLyricsChordsViewState extends State<SyncedLyricsChordsView> {
   final ScrollController _scrollController = ScrollController();
   int _lastScrolledIndex = -1;
+  // One GlobalKey per lyric line — allows Scrollable.ensureVisible to find
+  // the exact render position and scroll it precisely to the centre.
+  final List<GlobalKey> _lyricKeys = [];
 
   @override
   void dispose() {
@@ -43,16 +46,19 @@ class _SyncedLyricsChordsViewState extends State<SyncedLyricsChordsView> {
     final idx = widget.controller.currentLyricIndex;
     if (idx < 0 || idx == _lastScrolledIndex) return;
     if (!_scrollController.hasClients) return;
+    if (idx >= _lyricKeys.length) return;
 
     _lastScrolledIndex = idx;
 
-    // Estimate item height (each lyric line ~52px with padding/margin)
-    const itemHeight = 52.0;
-    final targetOffset = (idx * itemHeight) - 120.0; // Keep active near top-third
+    final key = _lyricKeys[idx];
+    final ctx = key.currentContext;
+    if (ctx == null) return;
 
-    _scrollController.animateTo(
-      targetOffset.clamp(0.0, _scrollController.position.maxScrollExtent),
-      duration: const Duration(milliseconds: 400),
+    // alignment: 0.5 places the active line at the vertical centre of the viewport
+    Scrollable.ensureVisible(
+      ctx,
+      alignment: 0.5,
+      duration: const Duration(milliseconds: 420),
       curve: Curves.easeInOut,
     );
   }
@@ -272,6 +278,14 @@ class _SyncedLyricsChordsViewState extends State<SyncedLyricsChordsView> {
   }
 
   Widget _buildLyricsList(List<dynamic> lyrics, int currentIndex) {
+    // Rebuild key list when lyrics change size
+    if (_lyricKeys.length != lyrics.length) {
+      _lyricKeys.clear();
+      for (int i = 0; i < lyrics.length; i++) {
+        _lyricKeys.add(GlobalKey());
+      }
+    }
+
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
@@ -282,6 +296,7 @@ class _SyncedLyricsChordsViewState extends State<SyncedLyricsChordsView> {
         final isPast = index < currentIndex;
 
         return InkWell(
+          key: _lyricKeys[index],
           onTap: () => widget.controller.seek(lyric.timestamp),
           borderRadius: BorderRadius.circular(10),
           child: AnimatedContainer(
