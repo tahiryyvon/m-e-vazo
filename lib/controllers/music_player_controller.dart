@@ -12,6 +12,7 @@ import '../services/windows_audio_player.dart';
 import '../services/local_audio_proxy.dart';
 import '../services/lrclib_service.dart';
 import '../services/songsterr_service.dart';
+import '../services/audio_chord_detector_service.dart';
 import '../services/recently_played_service.dart';
 import '../utils/title_parser.dart';
 
@@ -635,7 +636,21 @@ class MusicPlayerController extends ChangeNotifier {
     int? durationSeconds,
   }) async {
     try {
-      final result = await _chordsService.fetchChords(
+      // Priority 1: analyse the local audio file directly (WAV native, or
+      // MP3/M4A/AAC/FLAC/OGG/OPUS/WMA converted via OS-native APIs —
+      // Media Foundation on Windows, MediaExtractor/MediaCodec on Android).
+      // Falls back to the Songsterr API when no local path is available or
+      // the file format is not supported (e.g. remote YouTube streams).
+      SongChordsResult? result;
+      final localPath = _currentSong?.localPath;
+      if (localPath != null) {
+        result = await AudioChordDetectorService.analyzeAudioFile(localPath);
+        if (result != null) {
+          debugPrint('[MusicPlayerController] Chords from local audio analysis ($localPath)');
+        }
+      }
+
+      result ??= await _chordsService.fetchChords(
         title: title,
         artist: artist,
         lyrics: lyrics,
