@@ -7,7 +7,6 @@ import '../models/song.dart';
 import '../controllers/music_player_controller.dart';
 import '../services/youtube_service.dart';
 import '../services/recently_played_service.dart';
-import '../services/local_library_service.dart';
 import '../widgets/song_list_item.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -336,107 +335,14 @@ class _SearchScreenState extends State<SearchScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. Morceau de démonstration officiel
-              _buildDemoBanner(),
+              const SizedBox(height: 8),
 
-              const SizedBox(height: 12),
-
-              // 2. SECTION: DERNIÈRES CHANSONS LUES (Recently Played Songs)
+              // SECTION: DERNIÈRES CHANSONS LUES (Recently Played Songs)
               _buildRecentlyPlayedSection(isWide, constraints),
             ],
           ),
         );
       },
-    );
-  }
-
-  Widget _buildDemoBanner() {
-    final demoSong = LocalLibraryService.acousticDemoSong;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => widget.onSongSelected(demoSong),
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  const Color(0xFFFF8C00).withValues(alpha: 0.2),
-                  const Color(0xFF1E1610),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: const Color(0xFFFF8C00).withValues(alpha: 0.35),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFFF8C00), Color(0xFFFF5500)],
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 28),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFF8C00).withValues(alpha: 0.25),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Text(
-                              'DÉMO MUSICALE',
-                              style: TextStyle(
-                                color: Color(0xFFFF8C00),
-                                fontSize: 9,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.8,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          const Text(
-                            'Accords & Paroles synchronisés',
-                            style: TextStyle(color: Colors.white70, fontSize: 11),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Écouter le morceau de démonstration',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(Icons.chevron_right_rounded, color: Color(0xFFFF8C00), size: 22),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 
