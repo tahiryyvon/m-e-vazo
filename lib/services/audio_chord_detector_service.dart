@@ -181,10 +181,10 @@ class AudioChordDetectorService {
     int frameSize = 8192,
     int hop = 2048,
     double minEnergy = 0.01,
-    double chromaSmoothing = 0.2, // alpha EMA : plus bas = plus lisse, plus lent
-    int confirmFrames = 10, // frames consecutives requises avant de basculer d'accord
-    double switchMargin = 0.06, // marge de score minimale pour basculer
-    double minConfidence = 0.55, // score minimal pour valider un accord
+    double chromaSmoothing = 0.3, // alpha EMA : 0.3 reactif et lisse sans accumulation de lag
+    int confirmFrames = 5, // frames requises avant bascule (~230ms a hop 2048/44.1k)
+    double switchMargin = 0.04, // marge minimale de score pour basculer
+    double minConfidence = 0.48, // score minimal pour valider un accord
     int minSegmentMs = 700,
   }) {
     final halfLen = frameSize ~/ 2 + 1;
@@ -196,7 +196,11 @@ class AudioChordDetectorService {
 
     final nFrames = pcm.length < frameSize ? 0 : 1 + (pcm.length - frameSize) ~/ hop;
 
-    // Passe 1 : chroma brut (non normalise), energie, flux spectral par frame.
+    // Passe 1 : chroma normalise par frame, energie, flux spectral.
+    // La normalisation de chaque vecteur chroma avant le lissage EMA est
+    // cruciale : sans elle, les sections fortes (refrain, batterie) surponderent
+    // massivement l'etat interne de l'EMA, causant une derive et un blocage
+    // au milieu du morceau.
     final times = <double>[];
     final rawChroma = <List<double>?>[]; // null = frame silencieuse
     final flux = <double>[];
@@ -247,19 +251,24 @@ class AudioChordDetectorService {
         if (pc < 0) pc += 12;
         chroma[pc] += mag[k];
       }
+
+      // Normalisation L2 par frame pour rendre l'EMA invariante a la dynamique sonore
+      final cNorm = math.sqrt(chroma.fold(0.0, (a, b) => a + b * b));
+      if (cNorm > 1e-9) {
+        for (int c = 0; c < 12; c++) {
+          chroma[c] /= cNorm;
+        }
+      }
       rawChroma.add(chroma);
     }
 
-    // Passe 2 : lissage EMA du chroma dans le temps (attenue le bruit/transitoires
-    // bien mieux qu'un simple vote sur des labels deja bruites).
+    // Passe 2 : lissage EMA du chroma dans le temps (attenue le bruit/transitoires)
     final smoothedChroma = _emaSmoothChroma(rawChroma, chromaSmoothing);
 
     // Passe 3 : score de chaque accord candidat par frame (chroma normalise).
     final scoresPerFrame = _scoreFrames(smoothedChroma);
 
-    // Passe 4 : hysteresis — un accord ne remplace le precedent que s'il
-    // gagne avec une marge suffisante et reste le meilleur choix pendant
-    // `confirmFrames` frames consecutives. Coupe la majorite du flicker.
+    // Passe 4 : hysteresis et debounce avec gestion de perte de support
     final committed = _debounce(
       scoresPerFrame,
       confirmFrames: confirmFrames,
@@ -295,8 +304,8 @@ class AudioChordDetectorService {
   }
 
   /// Moyenne mobile exponentielle sur le chroma brut, frame par frame.
-  /// null (silence) reinitialise juste ce point de sortie a null ; la
-  /// continuite EMA reprend a la frame sonore suivante.
+  /// Les silences reinitialisent l'etat interne pour eviter de propager un
+  /// ancien accord apres une pause ou au debut d'une nouvelle section.
   static List<List<double>?> _emaSmoothChroma(List<List<double>?> raw, double alpha) {
     final out = List<List<double>?>.filled(raw.length, null);
     List<double>? prev;
@@ -304,6 +313,7 @@ class AudioChordDetectorService {
       final c = raw[i];
       if (c == null) {
         out[i] = null;
+        prev = null; // Reinitialise l'EMA sur les silences
         continue;
       }
       List<double> smoothed;
@@ -338,9 +348,10 @@ class AudioChordDetectorService {
     }).toList();
   }
 
-  /// Machine a etats simple : ne bascule l'accord "valide" que si un
-  /// candidat gagne par `margin`, avec un score >= `minConfidence`, et reste
-  /// le meilleur choix pendant `confirmFrames` frames d'affilee.
+  /// Machine a etats hysteresis / debounce :
+  /// - Bascule quand un accord candidat maintient l'avantage avec score >= minConfidence
+  /// - Libere automatiquement l'accord engage si celui-ci perd son support (score s'effondre)
+  ///   ou apres un silence soutenu, empechant le blocage en milieu de morceau.
   static List<String?> _debounce(
     List<Map<String, double>?> scoresPerFrame, {
     required int confirmFrames,
@@ -351,13 +362,23 @@ class AudioChordDetectorService {
     String? committed;
     String? candidate;
     int candidateCount = 0;
+    int silenceStreak = 0;
+    int committedLowStreak = 0;
 
     for (int i = 0; i < scoresPerFrame.length; i++) {
       final scores = scoresPerFrame[i];
       if (scores == null) {
+        silenceStreak++;
+        if (silenceStreak >= 4) {
+          // Plus de ~180ms de silence : libere l'accord engage pour repartir proprement
+          committed = null;
+          candidate = null;
+          candidateCount = 0;
+        }
         out[i] = committed;
         continue;
       }
+      silenceStreak = 0;
 
       String bestName = scores.keys.first;
       double bestScore = -1;
@@ -375,11 +396,34 @@ class AudioChordDetectorService {
       }
 
       final committedScore = scores[committed] ?? -1;
-      if (bestName == committed ||
-          (bestScore - committedScore) < margin ||
-          bestScore < minConfidence) {
+
+      // Perte de support : l'accord precedent s'effondre
+      if (committedScore < minConfidence - 0.08 || (bestScore - committedScore) > 0.15) {
+        committedLowStreak++;
+      } else {
+        committedLowStreak = 0;
+      }
+
+      // Si l'accord engage n'a plus de support, on reduit la barriere d'entree
+      final bool committedWeak = committedLowStreak >= confirmFrames;
+      final effectiveMargin = committedWeak ? 0.0 : margin;
+      final effectiveConfirm = committedWeak ? (confirmFrames ~/ 2).clamp(2, confirmFrames) : confirmFrames;
+
+      if (bestName == committed) {
         candidate = null;
         candidateCount = 0;
+        out[i] = committed;
+        continue;
+      }
+
+      if ((bestScore - committedScore) < effectiveMargin || bestScore < minConfidence) {
+        // En cas de micro-dip d'une seule frame (transitoire/percussion), ne pas
+        // detruire immediatement tout l'historique de confirmation du candidat.
+        if (candidateCount > 0) {
+          candidateCount--;
+        } else {
+          candidate = null;
+        }
         out[i] = committed;
         continue;
       }
@@ -390,10 +434,12 @@ class AudioChordDetectorService {
         candidate = bestName;
         candidateCount = 1;
       }
-      if (candidateCount >= confirmFrames) {
+
+      if (candidateCount >= effectiveConfirm) {
         committed = candidate;
         candidate = null;
         candidateCount = 0;
+        committedLowStreak = 0;
       }
       out[i] = committed;
     }

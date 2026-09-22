@@ -22,6 +22,7 @@ const Map<String, List<int>> _shapes = {
   'Em': [0, 2, 2, 0, 0, 0],
   'C': [-1, 3, 2, 0, 1, 0],
   'D': [-1, -1, 0, 2, 3, 2],
+  'Am': [-1, 0, 2, 2, 1, 0],
 };
 
 double _stringFreq(int stringIdx, int fret) => _stringOpen[stringIdx] * math.pow(2, fret / 12);
@@ -164,5 +165,77 @@ void main() {
     expect(gIdx, greaterThanOrEqualTo(0));
     expect(emIdx, greaterThan(gIdx));
     expect(dIdx, greaterThan(emIdx));
+  });
+
+  test('ne derive pas et ne se perd pas au milieu d un morceau long avec dynamique variable', () {
+    // Morceau plus long (16s) : progression G -> Em -> C -> D -> Am -> C -> G -> D
+    // Section du milieu (6s-12s) avec dynamique plus forte et bruit pour simuler
+    // le refrain (batterie/voix) qui provoquait le blocage mid-song.
+    final seq = [
+      const MapEntry('G', 2.0),
+      const MapEntry('Em', 2.0),
+      const MapEntry('C', 2.0),
+      const MapEntry('D', 2.0),
+      const MapEntry('Am', 2.0),
+      const MapEntry('C', 2.0),
+      const MapEntry('G', 2.0),
+      const MapEntry('D', 2.0),
+    ];
+    final clean = _synthProgression(seq);
+    final mixed = Float32List(clean.length);
+    final rng = math.Random(99);
+
+    for (int i = 0; i < clean.length; i++) {
+      final t = i / _sr;
+      double factor = 1.0;
+      if (t >= 6.0 && t <= 12.0) {
+        // Milieu du morceau : gain plus fort et perturbations (bruit de fond / percussions)
+        factor = 1.8;
+      }
+      mixed[i] = clean[i] * factor + (rng.nextDouble() - 0.5) * 0.05;
+    }
+
+    final result = AudioChordDetectorService.analyzePcm(mixed, _sr);
+
+    expect(result.chords, isNotEmpty);
+
+    // Verifie que les accords de la 2e moitie (milieu et fin) sont bien detectes
+    final detectedNames = result.chords.map((c) => c.chordName).toSet();
+    expect(detectedNames.contains('G'), isTrue, reason: 'G manquant');
+    expect(detectedNames.contains('Em'), isTrue, reason: 'Em manquant');
+    expect(detectedNames.contains('C'), isTrue, reason: 'C manquant');
+    expect(detectedNames.contains('D'), isTrue, reason: 'D manquant');
+    expect(detectedNames.contains('Am'), isTrue, reason: 'Am manquant en milieu de morceau');
+
+    // Verifie que le debut ET la fin ont bien detecte des accords
+    final firstChord = result.chords.first;
+    final lastChord = result.chords.last;
+    expect(firstChord.timestamp.inMilliseconds, lessThan(1000));
+    expect(lastChord.timestamp.inMilliseconds, greaterThan(12000));
+  });
+
+  test('reinitialise correctement apres une pause / silence au milieu du morceau', () {
+    // Progression : G (2s) -> Silence (1s) -> C (2s)
+    final gSamples = _synthChord('G', 2.0);
+    final silence = Float32List((1.0 * _sr).round());
+    final cSamples = _synthChord('C', 2.0);
+
+    final total = gSamples.length + silence.length + cSamples.length;
+    final pcm = Float32List(total);
+    pcm.setRange(0, gSamples.length, gSamples);
+    // silence reste a 0
+    pcm.setRange(gSamples.length + silence.length, total, cSamples);
+
+    final result = AudioChordDetectorService.analyzePcm(pcm, _sr);
+
+    expect(result.chords, isNotEmpty);
+    final gChord = result.chords.firstWhere((c) => c.chordName == 'G');
+    final cChord = result.chords.firstWhere((c) => c.chordName == 'C');
+
+    expect(gChord.timestamp.inMilliseconds, lessThan(300));
+    // C doit apparaitre apres le silence (vers 3.0s)
+    final cSec = cChord.timestamp.inMilliseconds / 1000;
+    expect(cSec, greaterThanOrEqualTo(2.8));
+    expect(cSec, lessThan(3.5));
   });
 }

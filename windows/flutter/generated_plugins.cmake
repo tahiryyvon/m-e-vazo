@@ -3,6 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  audio_decoder
   media_kit_libs_windows_audio
   permission_handler_windows
 )
