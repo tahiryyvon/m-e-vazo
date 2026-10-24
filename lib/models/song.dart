@@ -15,6 +15,8 @@ class Song {
   /// Absolute path to the local audio file (only set when isLocal = true)
   final String? localPath;
 
+  bool get isSessionOnly => localPath?.startsWith('blob:') ?? false;
+
   /// True if this song is an embedded asset track (e.g. demo song)
   final bool isAsset;
 

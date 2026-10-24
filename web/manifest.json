@@ -2,7 +2,7 @@
     "name": "M'e-Vazo",
     "short_name": "M'e-Vazo",
     "start_url": ".",
-    "display": "standalone",
+    "display": "fullscreen",
     "background_color": "#0D0D0D",
     "theme_color": "#FF8C00",
     "description": "Lecteur musical avec paroles synchronisées et accords de guitare.",

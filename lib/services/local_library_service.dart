@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/song.dart';
 
 class LocalLibraryService {
+  static Future<void>? _initialization;
   static const _storageKey = 'me_vazo_local_library_songs';
   static final ValueNotifier<List<Song>> librarySongsNotifier = ValueNotifier<List<Song>>([]);
 
@@ -17,7 +18,9 @@ class LocalLibraryService {
   );
 
   /// Initializes and loads saved songs from SharedPreferences
-  static Future<void> init() async {
+  static Future<void> init() => _initialization ??= _load();
+
+  static Future<void> _load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final rawList = prefs.getStringList(_storageKey) ?? [];
@@ -26,7 +29,8 @@ class LocalLibraryService {
       for (final jsonStr in rawList) {
         try {
           final map = jsonDecode(jsonStr) as Map<String, dynamic>;
-          loaded.add(Song.fromJson(map));
+          final song = Song.fromJson(map);
+          if (!song.isSessionOnly) loaded.add(song);
         } catch (e) {
           debugPrint('[LocalLibraryService] Corrupted song: $e');
         }
@@ -41,6 +45,7 @@ class LocalLibraryService {
 
   /// Adds a list of songs to the library and persists them
   static Future<void> addSongs(List<Song> songs) async {
+    await init();
     try {
       final current = List<Song>.from(librarySongsNotifier.value);
       for (final s in songs) {
@@ -70,7 +75,8 @@ class LocalLibraryService {
 
   static Future<void> _persist(List<Song> songs) async {
     final prefs = await SharedPreferences.getInstance();
-    final jsonList = songs.map((s) => jsonEncode(s.toJson())).toList();
+    final jsonList = songs.where((s) => !s.isSessionOnly)
+        .map((s) => jsonEncode(s.toJson())).toList();
     await prefs.setStringList(_storageKey, jsonList);
   }
 }

@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/song.dart';
 import '../services/local_library_service.dart';
+import '../services/browser_audio_file.dart';
 
 class LibraryScreen extends StatefulWidget {
   final Function(Song) onSongSelected;
@@ -24,6 +25,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   Future<void> _pickFiles() async {
+    if (_isLoading) return;
     setState(() => _isLoading = true);
 
     try {
@@ -42,6 +44,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       try {
         result = await FilePicker.platform.pickFiles(
           allowMultiple: true,
+          withData: kIsWeb,
           type: FileType.custom,
           allowedExtensions: ['mp3', 'm4a', 'wav', 'aac', 'flac', 'ogg', 'wma', 'opus'],
         );
@@ -50,14 +53,24 @@ class _LibraryScreenState extends State<LibraryScreen> {
         result = await FilePicker.platform.pickFiles(
           allowMultiple: true,
           type: FileType.audio,
+          withData: kIsWeb,
         );
       }
 
       if (result != null && result.files.isNotEmpty) {
-        final newSongs = result.files
-            .where((f) => f.path != null && f.path!.isNotEmpty)
-            .map((f) => Song.fromLocalFile(f.path!))
-            .toList();
+        final newSongs = <Song>[];
+        for (final file in result.files) {
+          if (kIsWeb) {
+            final bytes = file.bytes;
+            if (bytes == null) continue;
+            final url = createAudioUrl(bytes);
+            newSongs.add(Song.fromLocalFile(file.name).copyWith(
+              id: 'local_$url', localPath: url,
+            ));
+          } else if (file.path != null) {
+            newSongs.add(Song.fromLocalFile(file.path!));
+          }
+        }
 
         if (newSongs.isNotEmpty) {
           await LocalLibraryService.addSongs(newSongs);
@@ -175,6 +188,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
             ],
           ),
           const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: () => widget.onSongSelected(LocalLibraryService.acousticDemoSong),
+            icon: const Icon(Icons.play_circle_outline),
+            label: const Text('Écouter la démonstration'),
+          ),
+          if (kIsWeb)
+            const Text(
+              'Les fichiers importés restent disponibles dans cet onglet. '
+              'Après rechargement, sélectionnez-les à nouveau. '
+              'L’analyse des accords audio n’est pas encore disponible sur le Web.',
+              style: TextStyle(color: Color(0xFFAAAAAA), fontSize: 12),
+            ),
         ],
       ),
     );
@@ -235,9 +260,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   children: [
                     Icon(Icons.folder_open_rounded, color: Colors.white, size: 18),
                     SizedBox(width: 8),
-                    Text(
-                      'Parcourir mes fichiers audio',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14),
+                    Flexible(
+                      child: Text(
+                        'Parcourir mes fichiers audio',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14),
+                      ),
                     ),
                   ],
                 ),

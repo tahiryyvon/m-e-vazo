@@ -44,6 +44,8 @@ class RecentlyPlayedService {
 
   /// Adds a song to the top of recently played songs and persists it
   static Future<List<Song>> addSong(Song song) async {
+    // A browser blob URL cannot be reopened in a later session.
+    if (song.isSessionOnly) return recentSongsNotifier.value;
     try {
       final prefs = await SharedPreferences.getInstance();
       final currentList = await getRecentlyPlayed();

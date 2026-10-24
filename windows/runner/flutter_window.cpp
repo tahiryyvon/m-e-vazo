@@ -27,6 +27,20 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  flutter::MethodChannel<flutter::EncodableValue> window_channel(
+      flutter_controller_->engine()->messenger(), "me_vazo/window",
+      &flutter::StandardMethodCodec::GetInstance());
+  window_channel.SetMethodCallHandler([this](const auto& call, auto result) {
+    if (call.method_name() == "toggleFullscreen") {
+      SetFullscreen(!fullscreen_);
+      result->Success();
+    } else if (call.method_name() == "exitFullscreen") {
+      SetFullscreen(false);
+      result->Success();
+    } else {
+      result->NotImplemented();
+    }
+  });
   flutter::MethodChannel<flutter::EncodableValue> screen_awake(
       flutter_controller_->engine()->messenger(), "me_vazo/screen_awake",
       &flutter::StandardMethodCodec::GetInstance());
@@ -52,6 +66,7 @@ bool FlutterWindow::OnCreate() {
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
+    SetFullscreen(true);
     this->Show();
   });
 
@@ -61,6 +76,27 @@ bool FlutterWindow::OnCreate() {
   flutter_controller_->ForceRedraw();
 
   return true;
+}
+
+void FlutterWindow::SetFullscreen(bool enabled) {
+  if (fullscreen_ == enabled) return;
+  HWND window = GetHandle();
+  if (enabled) {
+    MONITORINFO monitor = {sizeof(MONITORINFO)};
+    if (!GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &monitor)) return;
+    window_style_ = GetWindowLong(window, GWL_STYLE);
+    GetWindowPlacement(window, &window_placement_);
+    SetWindowLong(window, GWL_STYLE, window_style_ & ~WS_OVERLAPPEDWINDOW);
+    SetWindowPos(window, HWND_TOP, monitor.rcMonitor.left, monitor.rcMonitor.top,
+        monitor.rcMonitor.right - monitor.rcMonitor.left,
+        monitor.rcMonitor.bottom - monitor.rcMonitor.top, SWP_FRAMECHANGED);
+  } else {
+    SetWindowLong(window, GWL_STYLE, window_style_);
+    SetWindowPlacement(window, &window_placement_);
+    SetWindowPos(window, nullptr, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+  }
+  fullscreen_ = enabled;
 }
 
 void FlutterWindow::OnDestroy() {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/chord_event.dart';
+import '../models/chord_barre.dart';
 import '../services/songsterr_service.dart';
 
 /// Widget displaying a guitar chord diagram with 6 strings and fret markers.
@@ -38,6 +39,7 @@ class ChordDiagram extends StatelessWidget {
   Widget _buildDiagram(ChordEvent chord, {Key? key}) {
     final positions = chord.fretPositions ??
         SongsterrService.getStandardChordPositions()[chord.chordName];
+    final barre = ChordBarre.resolve(chord, positions);
 
     return Column(
       key: key,
@@ -54,6 +56,9 @@ class ChordDiagram extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 6),
+        if (barre != null)
+          Text('Barré · case ${barre.fret}',
+              style: TextStyle(fontSize: size * 0.09, color: Colors.amberAccent)),
 
         // Fretboard diagram
         Container(
@@ -74,7 +79,7 @@ class ChordDiagram extends StatelessWidget {
           ),
           child: CustomPaint(
             size: Size(size - 16, size * 1.1 - 18),
-            painter: _ChordDiagramPainter(positions: positions),
+            painter: _ChordDiagramPainter(positions: positions, barre: barre),
           ),
         ),
       ],
@@ -84,11 +89,12 @@ class ChordDiagram extends StatelessWidget {
 
 class _ChordDiagramPainter extends CustomPainter {
   final List<int>? positions;
+  final ChordBarre? barre;
 
   static const int _fretCount = 5;
   static const int _stringCount = 6;
 
-  _ChordDiagramPainter({this.positions});
+  _ChordDiagramPainter({this.positions, this.barre});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -107,6 +113,25 @@ class _ChordDiagramPainter extends CustomPainter {
     final showFretNumber = startFret > 1;
 
     const topOffset = 16.0; // Space for X/O markers
+
+    if (barre != null) {
+      final row = barre!.fret - startFret;
+      if (row >= 0 && row < _fretCount) {
+        final left = barre!.firstString * stringSpacing;
+        final right = barre!.lastString * stringSpacing;
+        final top = topOffset + row * fretSpacing;
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(Rect.fromLTRB(left - 3, top, right + 3, top + fretSpacing),
+              const Radius.circular(4)),
+          Paint()..color = Colors.amber.withValues(alpha: 0.25),
+        );
+        canvas.drawLine(Offset(left, top + fretSpacing / 2),
+            Offset(right, top + fretSpacing / 2),
+            Paint()..color = Colors.amberAccent
+              ..strokeWidth = (fretSpacing * 0.5).clamp(4.0, 10.0)
+              ..strokeCap = StrokeCap.round);
+      }
+    }
 
     // Draw strings (vertical)
     for (int i = 0; i < _stringCount; i++) {
@@ -213,5 +238,5 @@ class _ChordDiagramPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _ChordDiagramPainter old) =>
-      old.positions != positions;
+      old.positions != positions || old.barre != barre;
 }

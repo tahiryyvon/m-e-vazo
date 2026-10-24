@@ -33,6 +33,31 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <button id="fullscreen" type="button" aria-label="Passer en plein écran"
+    style="position:fixed;right:12px;bottom:calc(env(safe-area-inset-bottom, 0px) + 84px);z-index:10000;border:1px solid #ff8c00;border-radius:8px;padding:6px 10px;font:12px sans-serif;background:rgba(24,24,24,.85);color:white;cursor:pointer;opacity:.8">
+    Plein écran
+  </button>
+  <script>
+    const fullscreenButton = document.getElementById('fullscreen');
+    const installedFullscreen = window.matchMedia('(display-mode: fullscreen)');
+    function updateFullscreenButton() {
+      fullscreenButton.hidden = Boolean(document.fullscreenElement) || installedFullscreen.matches;
+    }
+    fullscreenButton.addEventListener('click', async () => {
+      if (!document.documentElement.requestFullscreen) {
+        fullscreenButton.textContent = 'Plein écran indisponible sur ce navigateur';
+        return;
+      }
+      try {
+        await document.documentElement.requestFullscreen();
+      } catch (_) {
+        fullscreenButton.textContent = 'Réessayer le plein écran';
+      }
+    });
+    document.addEventListener('fullscreenchange', updateFullscreenButton);
+    installedFullscreen.addEventListener('change', updateFullscreenButton);
+    updateFullscreenButton();
+  </script>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader

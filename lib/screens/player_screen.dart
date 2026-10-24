@@ -75,7 +75,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
               SafeArea(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    final isLandscape = constraints.maxWidth > constraints.maxHeight;
+                    final isLandscape =
+                        constraints.maxWidth >= 700 &&
+                        constraints.maxWidth > constraints.maxHeight;
                     return isLandscape
                         ? _buildLandscapePlayer(song, constraints)
                         : _buildMobilePlayer(song);
@@ -103,7 +105,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (widget.controller.errorMessage != null) _buildErrorBanner(song),
         Expanded(
           child: Padding(
-            padding: EdgeInsets.fromLTRB(isShort ? 12 : 24, 4, isShort ? 12 : 24, isShort ? 8 : 16),
+            padding: EdgeInsets.fromLTRB(
+                isShort ? 12 : 24, 4, isShort ? 12 : 24, isShort ? 8 : 16),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -117,7 +120,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.45),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                    border:
+                        Border.all(color: Colors.white.withValues(alpha: 0.08)),
                   ),
                   child: SingleChildScrollView(
                     child: Column(
@@ -154,7 +158,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
                         // Enlarged Chords Visualizer Section
                         Container(
-                          margin: EdgeInsets.symmetric(vertical: isShort ? 4 : 8),
+                          margin:
+                              EdgeInsets.symmetric(vertical: isShort ? 4 : 8),
                           padding: EdgeInsets.symmetric(
                             horizontal: isShort ? 10 : 16,
                             vertical: isShort ? 8 : 14,
@@ -163,7 +168,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             color: Colors.white.withValues(alpha: 0.03),
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: const Color(0xFFFF8C00).withValues(alpha: 0.22),
+                              color: const Color(0xFFFF8C00)
+                                  .withValues(alpha: 0.22),
                               width: 1.2,
                             ),
                           ),
@@ -183,7 +189,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
-                                  ChordDiagram(chord: currentChord, size: isShort ? 105 : 140),
+                                  ChordDiagram(
+                                      chord: currentChord,
+                                      size: isShort ? 105 : 140),
                                   if (nextChord != null) ...[
                                     SizedBox(width: isShort ? 16 : 24),
                                     Column(
@@ -193,7 +201,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                           'SUIVANT',
                                           style: TextStyle(
                                             fontSize: 9,
-                                            color: Colors.white.withValues(alpha: 0.4),
+                                            color: Colors.white
+                                                .withValues(alpha: 0.4),
                                             letterSpacing: 1.5,
                                             fontWeight: FontWeight.w600,
                                           ),
@@ -201,7 +210,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                         const SizedBox(height: 4),
                                         Opacity(
                                           opacity: 0.55,
-                                          child: ChordDiagram(chord: nextChord, size: isShort ? 68 : 88),
+                                          child: ChordDiagram(
+                                              chord: nextChord,
+                                              size: isShort ? 68 : 88),
                                         ),
                                       ],
                                     ),
@@ -234,12 +245,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                      border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.08)),
                     ),
                     child: SyncedLyricsChordsView(
                       controller: widget.controller,
                       currentPosition: _position,
-                      showChordsHeader: false, // Chords are in the left panel on wide screens
+                      showChordsHeader:
+                          false, // Chords are in the left panel on wide screens
                       lyricFontSize: isShort ? 18 : 22,
                     ),
                   ),
@@ -281,7 +294,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.error_outline_rounded, color: Colors.white, size: 20),
+          const Icon(Icons.error_outline_rounded,
+              color: Colors.white, size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -290,7 +304,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 20),
+            icon: const Icon(Icons.refresh_rounded,
+                color: Colors.white, size: 20),
             onPressed: () => widget.controller.playSong(song),
             constraints: const BoxConstraints(),
             padding: EdgeInsets.zero,
@@ -326,12 +341,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
             const SizedBox(height: 24),
             const Text(
               'No song playing',
-              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
             Text(
               'Search for a song or pick a local file to get started',
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 14),
+              style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.4), fontSize: 14),
             ),
           ],
         ),
@@ -377,14 +396,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       width: 44,
                       height: 44,
                       color: const Color(0xFF222222),
-                      child: const Icon(Icons.music_note_rounded, color: Colors.white24),
+                      child: const Icon(Icons.music_note_rounded,
+                          color: Colors.white24),
                     ),
                   )
                 : Container(
                     width: 44,
                     height: 44,
                     color: const Color(0xFF222222),
-                    child: const Icon(Icons.music_note_rounded, color: Colors.white24),
+                    child: const Icon(Icons.music_note_rounded,
+                        color: Colors.white24),
                   ),
           ),
           const SizedBox(width: 12),
@@ -405,7 +426,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 const SizedBox(height: 2),
                 Text(
                   song.artist,
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.55), fontSize: 12),
+                  style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.55),
+                      fontSize: 12),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -451,8 +474,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   SliderTheme(
                     data: SliderTheme.of(context).copyWith(
                       trackHeight: 3,
-                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                      thumbShape:
+                          const RoundSliderThumbShape(enabledThumbRadius: 6),
+                      overlayShape:
+                          const RoundSliderOverlayShape(overlayRadius: 14),
                     ),
                     child: Slider(
                       value: progress.clamp(0.0, 1.0),
@@ -460,7 +485,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         final duration = widget.controller.currentDuration;
                         if (duration != null) {
                           final newPos = Duration(
-                            milliseconds: (duration.inMilliseconds * value).toInt(),
+                            milliseconds:
+                                (duration.inMilliseconds * value).toInt(),
                           );
                           widget.controller.seek(newPos);
                         }
@@ -472,10 +498,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(_formatDuration(_position), style: const TextStyle(color: Color(0xFF888888), fontSize: 11)),
+                        Text(_formatDuration(_position),
+                            style: const TextStyle(
+                                color: Color(0xFF888888), fontSize: 11)),
                         Text(
-                          _formatDuration(widget.controller.currentDuration ?? Duration.zero),
-                          style: const TextStyle(color: Color(0xFF888888), fontSize: 11),
+                          _formatDuration(widget.controller.currentDuration ??
+                              Duration.zero),
+                          style: const TextStyle(
+                              color: Color(0xFF888888), fontSize: 11),
                         ),
                       ],
                     ),
@@ -488,25 +518,32 @@ class _PlayerScreenState extends State<PlayerScreen> {
           const SizedBox(height: 6),
 
           // Playback controls
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
             children: [
+              _ControlButton(
+                icon: Icons.first_page_rounded,
+                size: 24,
+                tooltip: 'Revenir au début (Début)',
+                onPressed: () => widget.controller.seek(Duration.zero),
+              ),
               // -10s
               _ControlButton(
                 icon: Icons.replay_10_rounded,
+                tooltip: 'Reculer de 10 s (←)',
                 size: 26,
                 onPressed: widget.controller.seekBackward,
               ),
-              const SizedBox(width: 20),
 
               // Play/Pause main button
               _buildPlayPauseButton(),
 
-              const SizedBox(width: 20),
-
               // +10s
               _ControlButton(
                 icon: Icons.forward_10_rounded,
+                tooltip: 'Avancer de 10 s (→)',
                 size: 26,
                 onPressed: widget.controller.seekForward,
               ),
@@ -516,8 +553,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
             children: [
               IconButton(
                 tooltip: widget.controller.volume == 0
-                    ? 'Rétablir le son'
-                    : 'Couper le son',
+                    ? 'Rétablir le son (M)'
+                    : 'Couper le son (M)',
                 onPressed: widget.controller.toggleMute,
                 icon: Icon(
                   widget.controller.volume == 0
@@ -554,37 +591,46 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final isPlaying = widget.controller.state == PlaybackState.playing;
     final isLoading = widget.controller.state == PlaybackState.loading;
 
-    return GestureDetector(
-      onTap: widget.controller.togglePlayPause,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        width: 58,
-        height: 58,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFFFF8C00), Color(0xFFFF4500)],
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFFFF8C00).withValues(alpha: 0.4),
-              blurRadius: 18,
-              spreadRadius: 2,
-            ),
-          ],
-        ),
-        child: isLoading
-            ? const Padding(
-                padding: EdgeInsets.all(16),
-                child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
-              )
-            : Icon(
-                isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                size: 32,
-                color: Colors.white,
+    return Tooltip(
+      message: isPlaying ? 'Pause (Espace)' : 'Lecture (Espace)',
+      child: Semantics(
+        button: true,
+        label: isPlaying ? 'Pause' : 'Lecture',
+        child: InkWell(
+          onTap: isLoading ? null : widget.controller.togglePlayPause,
+          customBorder: const CircleBorder(),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 58,
+            height: 58,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFFFF8C00), Color(0xFFFF4500)],
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFFF8C00).withValues(alpha: 0.4),
+                  blurRadius: 18,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: isLoading
+                ? const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2.5, color: Colors.white),
+                  )
+                : Icon(
+                    isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                    size: 32,
+                    color: Colors.white,
+                  ),
+          ),
+        ),
       ),
     );
   }
@@ -594,13 +640,19 @@ class _ControlButton extends StatelessWidget {
   final IconData icon;
   final double size;
   final VoidCallback onPressed;
+  final String tooltip;
 
-  const _ControlButton({required this.icon, required this.size, required this.onPressed});
+  const _ControlButton(
+      {required this.icon,
+      required this.size,
+      required this.onPressed,
+      required this.tooltip});
 
   @override
   Widget build(BuildContext context) {
     return IconButton(
       onPressed: onPressed,
+      tooltip: tooltip,
       icon: Icon(icon, color: Colors.white.withValues(alpha: 0.75), size: size),
       splashRadius: 22,
     );

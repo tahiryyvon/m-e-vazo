@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -66,6 +67,10 @@ class _SearchScreenState extends State<SearchScreen> {
       if (mounted && generation == _searchGeneration) {
         setState(() {
           _results = results;
+          if (kIsWeb && results.isEmpty) {
+            _error = 'Recherche YouTube indisponible ou sans résultat dans ce navigateur. '
+                'Vous pouvez importer un fichier audio ou écouter la démonstration dans Ma Bibliothèque.';
+          }
           _isLoading = false;
         });
       }

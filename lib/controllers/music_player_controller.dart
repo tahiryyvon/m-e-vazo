@@ -599,14 +599,16 @@ class MusicPlayerController extends ChangeNotifier {
     debugPrint('[MusicPlayerController] Playing local file: $path');
 
     try {
-      final file = File(path);
-      if (!path.startsWith('content://') && !file.existsSync()) {
+      if (!kIsWeb && !path.startsWith('content://') && !File(path).existsSync()) {
         _errorMessage = 'Fichier audio introuvable : $path';
         _updateState(PlaybackState.error);
         return;
       }
 
-      if (_isWindows) {
+      if (kIsWeb) {
+        await _audioPlayer!.setUrl(path);
+        await _audioPlayer!.play();
+      } else if (_isWindows) {
         // media_kit can play local files directly on Windows
         await _windowsPlayer!.playFile(path);
         _updateState(PlaybackState.playing);
@@ -710,7 +712,7 @@ class MusicPlayerController extends ChangeNotifier {
       // Both local files and YouTube use audio time, independent of lyrics.
       SongChordsResult? result;
       final localPath = song.localPath;
-      if (localPath != null) {
+      if (!kIsWeb && localPath != null) {
         result = await AudioChordDetectorService.analyzeAudioFile(localPath);
       } else if (!kIsWeb) {
         final url = await LocalAudioProxy.instance.getProxyStreamUrl(song.id);
@@ -726,7 +728,9 @@ class MusicPlayerController extends ChangeNotifier {
       _tuning = result?.tuning;
       _chordStatus = result != null && result.chords.isNotEmpty
           ? result.analysisMethod ?? 'Accords estimés · moteur expérimental'
-          : 'Accords indisponibles · analyse audio non concluante';
+          : kIsWeb
+              ? 'Analyse des accords audio non disponible sur le Web'
+              : 'Accords indisponibles · analyse audio non concluante';
       _currentChordIndex = -1;
       _syncChords(_playbackPosition);
 
@@ -831,7 +835,12 @@ class MusicPlayerController extends ChangeNotifier {
   }
 
   Future<void> seek(Duration position) async {
-    if (_isPreparingPlayback) return;
+    if (_isPreparingPlayback || _currentSong == null) return;
+    final duration = currentDuration;
+    if (position < Duration.zero) position = Duration.zero;
+    if (duration != null && duration > Duration.zero && position > duration) {
+      position = duration;
+    }
     if (_isWindows) {
       await _windowsPlayer!.seek(position);
     } else {

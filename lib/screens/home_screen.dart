@@ -6,6 +6,7 @@ import 'search_screen.dart';
 import 'player_screen.dart';
 import 'library_screen.dart';
 import '../widgets/mini_player.dart';
+import '../widgets/player_keyboard_controls.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -42,19 +43,24 @@ class _HomeScreenState extends State<HomeScreen> {
       LibraryScreen(onSongSelected: _onSongSelected),
     ];
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isDesktop = constraints.maxWidth >= 900 && constraints.maxHeight >= 550;
-        final isCompactLandscape = constraints.maxWidth > constraints.maxHeight && !isDesktop;
+    return PlayerKeyboardControls(
+      controller: _controller,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isDesktop =
+              constraints.maxWidth >= 900 && constraints.maxHeight >= 550;
+          final isCompactLandscape =
+              constraints.maxWidth > constraints.maxHeight && !isDesktop;
 
-        if (isDesktop) {
-          return _buildWideLayout(screens);
-        } else if (isCompactLandscape) {
-          return _buildLandscapeNavRailLayout(screens);
-        } else {
-          return _buildMobileLayout(screens);
-        }
-      },
+          if (isDesktop) {
+            return _buildWideLayout(screens);
+          } else if (isCompactLandscape) {
+            return _buildLandscapeNavRailLayout(screens);
+          } else {
+            return _buildMobileLayout(screens);
+          }
+        },
+      ),
     );
   }
 
@@ -71,7 +77,8 @@ class _HomeScreenState extends State<HomeScreen> {
               decoration: BoxDecoration(
                 color: const Color(0xFF111111),
                 border: Border(
-                  right: BorderSide(color: Colors.white.withValues(alpha: 0.07), width: 1),
+                  right: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.07), width: 1),
                 ),
               ),
               child: Column(
@@ -132,7 +139,8 @@ class _HomeScreenState extends State<HomeScreen> {
             decoration: BoxDecoration(
               color: const Color(0xFF111111),
               border: Border(
-                right: BorderSide(color: Colors.white.withValues(alpha: 0.07), width: 1),
+                right: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.07), width: 1),
               ),
             ),
             child: SafeArea(
@@ -156,7 +164,8 @@ class _HomeScreenState extends State<HomeScreen> {
                               borderRadius: BorderRadius.circular(12),
                               boxShadow: [
                                 BoxShadow(
-                                  color: const Color(0xFFFF8C00).withValues(alpha: 0.35),
+                                  color: const Color(0xFFFF8C00)
+                                      .withValues(alpha: 0.35),
                                   blurRadius: 12,
                                 ),
                               ],
@@ -277,7 +286,8 @@ class _HomeScreenState extends State<HomeScreen> {
             decoration: BoxDecoration(
               color: const Color(0xFF111111),
               border: Border(
-                top: BorderSide(color: Colors.white.withValues(alpha: 0.06), width: 1),
+                top: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.06), width: 1),
               ),
             ),
             child: SafeArea(
@@ -338,7 +348,9 @@ class _SidebarItem extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
-        color: isSelected ? const Color(0xFFFF8C00).withValues(alpha: 0.15) : Colors.transparent,
+        color: isSelected
+            ? const Color(0xFFFF8C00).withValues(alpha: 0.15)
+            : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         border: isSelected
             ? Border.all(color: const Color(0xFFFF8C00).withValues(alpha: 0.35))
@@ -387,7 +399,9 @@ class _NavRailIcon extends StatelessWidget {
       ),
       onPressed: onTap,
       style: IconButton.styleFrom(
-        backgroundColor: isSelected ? const Color(0xFFFF8C00).withValues(alpha: 0.15) : Colors.transparent,
+        backgroundColor: isSelected
+            ? const Color(0xFFFF8C00).withValues(alpha: 0.15)
+            : Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         padding: const EdgeInsets.all(8),
       ),
