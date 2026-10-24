@@ -5,7 +5,7 @@ import '../services/songsterr_service.dart';
 import 'chord_diagram.dart';
 
 /// Clean, high-contrast banner displaying:
-/// 1. Key, Capo, and Sync Offset
+/// 1. Estimated key and Capo
 /// 2. Complete list of all chords in the song with active chord highlighting & diagram preview
 class HarmonicInfoBar extends StatelessWidget {
   final MusicPlayerController controller;
@@ -17,7 +17,6 @@ class HarmonicInfoBar extends StatelessWidget {
     final key = controller.musicalKey;
     final capo = controller.capo;
     final hasCapo = capo != null && capo > 0;
-    final offsetSec = controller.chordOffsetMs / 1000.0;
     final allChords = controller.uniqueSongChords;
     final currentChordName = controller.currentChord?.chordName;
 
@@ -32,7 +31,11 @@ class HarmonicInfoBar extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ── Top Row: Key, Capo, Sync ──────────────────────
+          Text(controller.chordStatus,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white70, fontSize: 11)),
+          const SizedBox(height: 6),
+          // ── Top Row: Key, Capo ──────────────────────
           Wrap(
             alignment: WrapAlignment.center,
             crossAxisAlignment: WrapCrossAlignment.center,
@@ -45,15 +48,17 @@ class HarmonicInfoBar extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: const Color(0xFFFF8C00).withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFFF8C00).withValues(alpha: 0.35)),
+                  border: Border.all(
+                      color: const Color(0xFFFF8C00).withValues(alpha: 0.35)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.music_note_rounded, size: 14, color: Color(0xFFFF8C00)),
+                    const Icon(Icons.music_note_rounded,
+                        size: 14, color: Color(0xFFFF8C00)),
                     const SizedBox(width: 4),
                     Text(
-                      'KEY: ${key != null && key.isNotEmpty ? key : 'Standard'}',
+                      'TONALITÉ ≈ ${key != null && key.isNotEmpty ? key : '?'}',
                       style: const TextStyle(
                         color: Color(0xFFFFB347),
                         fontSize: 11,
@@ -65,84 +70,66 @@ class HarmonicInfoBar extends StatelessWidget {
                 ),
               ),
 
-              // Capo Badge
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                decoration: BoxDecoration(
-                  color: hasCapo
-                      ? const Color(0xFF00E676).withValues(alpha: 0.15)
-                      : Colors.white.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
+              // Capo is a playing choice, not an audio-detected measurement.
+              PopupMenuButton<int>(
+                tooltip: 'Choisir le capo et adapter les positions',
+                onSelected: (fret) =>
+                    controller.setCapo(fret < 0 ? null : fret),
+                itemBuilder: (_) => [
+                  const PopupMenuItem(
+                      value: -1,
+                      child: Text('Accords entendus · capo inconnu')),
+                  for (var fret = 0; fret <= 12; fret++)
+                    PopupMenuItem(
+                        value: fret,
+                        child: Text(fret == 0
+                            ? 'Sans capo'
+                            : 'Capo case $fret · positions relatives')),
+                ],
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  constraints: const BoxConstraints(minHeight: 44),
+                  decoration: BoxDecoration(
                     color: hasCapo
-                        ? const Color(0xFF00E676).withValues(alpha: 0.4)
-                        : Colors.white.withValues(alpha: 0.12),
+                        ? const Color(0xFF00E676).withValues(alpha: 0.15)
+                        : Colors.white.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: hasCapo
+                          ? const Color(0xFF00E676).withValues(alpha: 0.4)
+                          : Colors.white.withValues(alpha: 0.12),
+                    ),
                   ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.tune_rounded,
-                      size: 14,
-                      color: hasCapo ? const Color(0xFF00E676) : Colors.white.withValues(alpha: 0.4),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      hasCapo ? 'CAPO: Fret $capo' : 'CAPO: None',
-                      style: TextStyle(
-                        color: hasCapo ? const Color(0xFF69F0AE) : Colors.white.withValues(alpha: 0.5),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.8,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.tune_rounded,
+                        size: 18,
+                        color: hasCapo
+                            ? const Color(0xFF00E676)
+                            : Colors.white.withValues(alpha: 0.4),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 4),
+                      Text(
+                        hasCapo
+                            ? 'CAPO: $capo ▾'
+                            : 'CAPO: ${capo == null ? 'à choisir' : '0'} ▾',
+                        style: TextStyle(
+                          color: hasCapo
+                              ? const Color(0xFF69F0AE)
+                              : Colors.white.withValues(alpha: 0.5),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
 
-              // Sync Offset Calibration
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    InkWell(
-                      onTap: () => controller.adjustChordOffset(-100),
-                      borderRadius: BorderRadius.circular(4),
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 3, vertical: 2),
-                        child: Icon(Icons.remove_rounded, size: 14, color: Colors.white70),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 3),
-                      child: Text(
-                        'SYNC: ${offsetSec >= 0 ? '+' : ''}${offsetSec.toStringAsFixed(1)}s',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                    InkWell(
-                      onTap: () => controller.adjustChordOffset(100),
-                      borderRadius: BorderRadius.circular(4),
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 3, vertical: 2),
-                        child: Icon(Icons.add_rounded, size: 14, color: Colors.white70),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ],
           ),
 
@@ -180,7 +167,8 @@ class HarmonicInfoBar extends StatelessWidget {
                           borderRadius: BorderRadius.circular(6),
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 2.5),
                             decoration: BoxDecoration(
                               color: isActive
                                   ? const Color(0xFFFF8C00)
@@ -195,7 +183,8 @@ class HarmonicInfoBar extends StatelessWidget {
                               boxShadow: isActive
                                   ? [
                                       BoxShadow(
-                                        color: const Color(0xFFFF8C00).withValues(alpha: 0.4),
+                                        color: const Color(0xFFFF8C00)
+                                            .withValues(alpha: 0.4),
                                         blurRadius: 8,
                                         spreadRadius: 1,
                                       ),
@@ -206,8 +195,12 @@ class HarmonicInfoBar extends StatelessWidget {
                               chord,
                               style: TextStyle(
                                 fontSize: 11,
-                                fontWeight: isActive ? FontWeight.w900 : FontWeight.w700,
-                                color: isActive ? Colors.black : Colors.white.withValues(alpha: 0.9),
+                                fontWeight: isActive
+                                    ? FontWeight.w900
+                                    : FontWeight.w700,
+                                color: isActive
+                                    ? Colors.black
+                                    : Colors.white.withValues(alpha: 0.9),
                                 letterSpacing: 0.3,
                               ),
                             ),
@@ -259,7 +252,8 @@ class HarmonicInfoBar extends StatelessWidget {
               const SizedBox(height: 16),
               TextButton(
                 onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('FERMER', style: TextStyle(color: Colors.white70)),
+                child: const Text('FERMER',
+                    style: TextStyle(color: Colors.white70)),
               ),
             ],
           ),

@@ -1,6 +1,8 @@
 #include "flutter_window.h"
 
 #include <optional>
+#include <flutter/method_channel.h>
+#include <flutter/standard_method_codec.h>
 
 #include "flutter/generated_plugin_registrant.h"
 
@@ -25,6 +27,28 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  flutter::MethodChannel<flutter::EncodableValue> screen_awake(
+      flutter_controller_->engine()->messenger(), "me_vazo/screen_awake",
+      &flutter::StandardMethodCodec::GetInstance());
+  screen_awake.SetMethodCallHandler([](const auto& call, auto result) {
+    if (call.method_name() != "setEnabled") {
+      result->NotImplemented();
+      return;
+    }
+    const auto* enabled = call.arguments()
+        ? std::get_if<bool>(call.arguments()) : nullptr;
+    if (!enabled) {
+      result->Error("invalid_argument", "Expected a boolean");
+      return;
+    }
+    const auto flags = ES_CONTINUOUS |
+        (*enabled ? ES_DISPLAY_REQUIRED : 0);
+    if (!SetThreadExecutionState(flags)) {
+      result->Error("screen_awake_failed", "Could not update display idle policy");
+      return;
+    }
+    result->Success();
+  });
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -40,6 +64,7 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  SetThreadExecutionState(ES_CONTINUOUS);
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }

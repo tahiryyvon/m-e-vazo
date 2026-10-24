@@ -3,7 +3,7 @@ import '../models/chord_event.dart';
 import '../services/songsterr_service.dart';
 
 /// Widget displaying a guitar chord diagram with 6 strings and fret markers.
-/// Uses AnimatedSwitcher for smooth transitions between chords.
+/// Changes immediately at the audio timestamp, without overlapping diagrams.
 class ChordDiagram extends StatelessWidget {
   final ChordEvent? chord;
   final double size;
@@ -16,18 +16,9 @@ class ChordDiagram extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 300),
-      transitionBuilder: (child, animation) {
-        return FadeTransition(
-          opacity: animation,
-          child: ScaleTransition(scale: animation, child: child),
-        );
-      },
-      child: chord == null
+    return chord == null
           ? _buildPlaceholder(key: const ValueKey('placeholder'))
-          : _buildDiagram(chord!, key: ValueKey(chord!.chordName)),
-    );
+          : _buildDiagram(chord!, key: ValueKey(chord!.chordName));
   }
 
   Widget _buildPlaceholder({Key? key}) {

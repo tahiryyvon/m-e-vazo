@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shimmer/shimmer.dart';
@@ -32,6 +31,8 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _isLoading = false;
   String? _error;
   bool _hasSearched = false;
+  // Guards against a slow earlier search overwriting a newer one's results.
+  int _searchGeneration = 0;
 
   @override
   void initState() {
@@ -51,6 +52,7 @@ class _SearchScreenState extends State<SearchScreen> {
     final q = query.trim();
     if (q.isEmpty) return;
     _focusNode.unfocus();
+    final generation = ++_searchGeneration;
 
     setState(() {
       _isLoading = true;
@@ -61,14 +63,14 @@ class _SearchScreenState extends State<SearchScreen> {
 
     try {
       final results = await _youtubeService.searchSongs(q, maxResults: 20);
-      if (mounted) {
+      if (mounted && generation == _searchGeneration) {
         setState(() {
           _results = results;
           _isLoading = false;
         });
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted && generation == _searchGeneration) {
         setState(() {
           _error = 'Search failed: $e';
           _isLoading = false;
@@ -125,7 +127,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      "M' e-Vazo",
+                      "M'e-Vazo",
                       style: GoogleFonts.righteous(
                         color: Colors.white,
                         fontSize: 32,
@@ -328,8 +330,6 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget _buildHomeContent() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isWide = constraints.maxWidth >= 600;
-
         return SingleChildScrollView(
           padding: const EdgeInsets.only(bottom: 100),
           child: Column(
@@ -338,7 +338,7 @@ class _SearchScreenState extends State<SearchScreen> {
               const SizedBox(height: 8),
 
               // SECTION: DERNIÈRES CHANSONS LUES (Recently Played Songs)
-              _buildRecentlyPlayedSection(isWide, constraints),
+              _buildRecentlyPlayedSection(),
             ],
           ),
         );
@@ -346,7 +346,7 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Widget _buildRecentlyPlayedSection(bool isWide, BoxConstraints constraints) {
+  Widget _buildRecentlyPlayedSection() {
     return ValueListenableBuilder<List<Song>>(
       valueListenable: RecentlyPlayedService.recentSongsNotifier,
       builder: (context, recentSongs, _) {
@@ -355,10 +355,13 @@ class _SearchScreenState extends State<SearchScreen> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Row(
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       Container(
                         padding: const EdgeInsets.all(4),
@@ -463,32 +466,20 @@ class _SearchScreenState extends State<SearchScreen> {
                 ),
               )
             else
-              // Horizontal carousel — scrollable à la souris, trackpad et touch
-              // sur toutes les tailles d'écran (mobile, tablette, bureau)
-              SizedBox(
-                height: 180,
-                child: ScrollConfiguration(
-                  behavior: ScrollConfiguration.of(context).copyWith(
-                    dragDevices: {
-                      PointerDeviceKind.touch,
-                      PointerDeviceKind.mouse,
-                      PointerDeviceKind.trackpad,
-                    },
-                  ),
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: recentSongs.length,
-                    itemBuilder: (context, index) {
-                      final song = recentSongs[index];
-                      return _RecentSongCard(
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    for (final song in recentSongs)
+                      _RecentSongCard(
                         song: song,
                         isPlaying: widget.controller.currentSong?.id == song.id,
                         onTap: () => widget.onSongSelected(song),
                         onDelete: () => RecentlyPlayedService.removeSong(song.id),
-                      );
-                    },
-                  ),
+                      ),
+                  ],
                 ),
               ),
           ],
@@ -567,7 +558,6 @@ class _RecentSongCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: 144,
-      margin: const EdgeInsets.only(right: 12),
       decoration: BoxDecoration(
         color: const Color(0xFF181818),
         borderRadius: BorderRadius.circular(14),
@@ -594,6 +584,7 @@ class _RecentSongCard extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.all(10),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Artwork avec badge & bouton supprimer — hauteur fixe

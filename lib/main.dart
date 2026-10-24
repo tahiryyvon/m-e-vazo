@@ -21,7 +21,7 @@ Future<void> main() async {
     try {
       await JustAudioBackground.init(
         androidNotificationChannelId: 'com.guitarlyrics.channel.audio',
-        androidNotificationChannelName: "M' e-Vazo",
+        androidNotificationChannelName: "M'e-Vazo",
         androidNotificationIcon: 'mipmap/ic_launcher',
         androidNotificationOngoing: true,
         preloadArtwork: true,
@@ -57,7 +57,7 @@ class GuitarLyricsPlayerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: "M' e-Vazo",
+      title: "M'e-Vazo",
       debugShowCheckedModeBanner: false,
       theme: _buildDarkTheme(),
       home: const HomeScreen(),

@@ -98,8 +98,10 @@ class LrcLibService {
         for (final item in results.cast<Map<String, dynamic>>()) {
           final itemTitle = (item['trackName'] as String? ?? '').toLowerCase();
           final itemArtist = (item['artistName'] as String? ?? '').toLowerCase();
-          final score = _similarity(itemTitle, trackName.toLowerCase()) +
-              _similarity(itemArtist, artistName.toLowerCase());
+          final titleScore = _similarity(itemTitle, trackName.toLowerCase());
+          final artistScore = _similarity(itemArtist, artistName.toLowerCase());
+          if (titleScore < 0.6 || artistScore < 0.5) continue;
+          final score = titleScore + artistScore;
           if (score > bestScore) {
             bestScore = score;
             best = item;
@@ -130,7 +132,8 @@ class LrcLibService {
       return plainLyrics
           .split('\n')
           .where((line) => line.trim().isNotEmpty)
-          .map((line) => LyricLine(timestamp: Duration.zero, text: line.trim()))
+          .map((line) => LyricLine(timestamp: Duration.zero, text: line.trim(),
+              isSynced: false, sourceUrl: Uri.parse('https://lrclib.net')))
           .toList();
     }
 
@@ -139,6 +142,7 @@ class LrcLibService {
 
   /// Simple string similarity (0..2 range, higher = better)
   double _similarity(String a, String b) {
+    if (a.trim().isEmpty || b.trim().isEmpty) return 0;
     if (a == b) return 1.0;
     if (a.contains(b) || b.contains(a)) return 0.8;
     final aWords = a.split(' ').toSet();

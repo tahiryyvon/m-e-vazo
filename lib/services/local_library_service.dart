@@ -11,7 +11,7 @@ class LocalLibraryService {
   static final Song acousticDemoSong = Song.demo(
     id: 'demo_acoustic_guitar',
     title: 'Acoustic Guitar Demonstration',
-    artist: "M' e-Vazo Studio",
+    artist: "M'e-Vazo Studio",
     assetPath: 'assets/audio/acoustic_demo.wav',
     durationSeconds: 24,
   );

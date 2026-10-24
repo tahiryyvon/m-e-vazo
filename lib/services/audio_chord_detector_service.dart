@@ -1,10 +1,13 @@
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:audio_decoder/audio_decoder.dart' as ad;
 import '../models/chord_event.dart';
 import 'songsterr_service.dart';
 import 'wav_pcm_decoder.dart';
+import 'chord_timeline_filter.dart';
+import 'chordino_service.dart';
 
 /// FFT radix-2 iterative, en place. Necessite une taille puissance de 2.
 class _Fft {
@@ -66,17 +69,8 @@ class _Fft {
 ///   Les 7e, maj7, sus, add9 etc. ne sont PAS distingues dans cette version :
 ///   un accord "G7" sera detecte comme "G". A etendre plus tard si besoin.
 /// - Le capo et la tonalite ne sont pas detectes (accordage standard supposé).
-/// - MP3 / M4A / FLAC / AAC / OGG ne sont pas geres : il faut d'abord les
-///   decoder en PCM (non fait ici, cf. note d'integration).
-///
-/// Algorithme valide sur signaux synthetiques (Python/numpy) avant portage :
-/// - Signal propre : 8/8 accords corrects, latence moyenne ~95ms (max 142ms).
-/// - Signal bruite realiste (bruit de fond + clics + vibrato) : le lissage
-///   EMA du chroma + l'hysteresis a marge (voir `_debounce`) fait passer le
-///   nombre de segments parasites de 17 a 9 pour 8 accords attendus, sans
-///   rien degrader sur le signal propre.
-/// Le portage Dart lui-meme n'a pas ete execute (pas de SDK Dart disponible
-/// ici) : a valider avec `flutter test` avant integration definitive.
+/// - Les formats compresses sont convertis en WAV par audio_decoder.
+/// Les tests synthetiques ne garantissent pas la justesse sur un mix reel.
 class AudioChordDetectorService {
   static const List<String> _majorNames = [
     'C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'
@@ -166,11 +160,19 @@ class AudioChordDetectorService {
   /// n'existe pas ou n'est pas un PCM 16-bit supporte (fallback attendu
   /// cote appelant vers une autre source, ex. SongsterrService).
   static Future<SongChordsResult?> analyzeWavFile(String path) async {
+    // File decoding and FFT must not block playback position updates or painting.
+    return Isolate.run(() => _analyzeWavFile(path));
+  }
+
+  static Future<SongChordsResult?> _analyzeWavFile(String path) async {
     final file = File(path);
     if (!await file.exists()) return null;
     final bytes = await file.readAsBytes();
     final wav = WavPcmDecoder.decode(bytes);
     if (wav == null) return null;
+    if (Platform.isWindows) {
+      return ChordinoService.analyzeWav(path, wav.samples.length / wav.sampleRate);
+    }
     return analyzePcm(wav.samples, wav.sampleRate);
   }
 
@@ -185,7 +187,7 @@ class AudioChordDetectorService {
     int confirmFrames = 5, // frames requises avant bascule (~230ms a hop 2048/44.1k)
     double switchMargin = 0.04, // marge minimale de score pour basculer
     double minConfidence = 0.48, // score minimal pour valider un accord
-    int minSegmentMs = 700,
+    int minSegmentMs = 350,
   }) {
     final halfLen = frameSize ~/ 2 + 1;
     final freqs = List<double>.generate(halfLen, (k) => k * sampleRate / frameSize);
@@ -196,15 +198,13 @@ class AudioChordDetectorService {
 
     final nFrames = pcm.length < frameSize ? 0 : 1 + (pcm.length - frameSize) ~/ hop;
 
-    // Passe 1 : chroma normalise par frame, energie, flux spectral.
+    // Passe 1 : chroma normalise par frame et energie.
     // La normalisation de chaque vecteur chroma avant le lissage EMA est
     // cruciale : sans elle, les sections fortes (refrain, batterie) surponderent
     // massivement l'etat interne de l'EMA, causant une derive et un blocage
     // au milieu du morceau.
     final times = <double>[];
     final rawChroma = <List<double>?>[]; // null = frame silencieuse
-    final flux = <double>[];
-    List<double>? prevMag;
 
     for (int i = 0; i < nFrames; i++) {
       final start = i * hop;
@@ -224,17 +224,6 @@ class AudioChordDetectorService {
       for (int k = 0; k < halfLen; k++) {
         mag[k] = math.sqrt(real[k] * real[k] + imag[k] * imag[k]);
       }
-
-      double fluxVal = 0;
-      final prev = prevMag;
-      if (prev != null) {
-        for (int k = 0; k < halfLen; k++) {
-          final d = mag[k] - prev[k];
-          if (d > 0) fluxVal += d;
-        }
-      }
-      flux.add(fluxVal);
-      prevMag = mag;
 
       final rms = math.sqrt(energySum / frameSize);
       if (rms < minEnergy) {
@@ -278,7 +267,12 @@ class AudioChordDetectorService {
 
     final segments = _toSegments(times, committed);
     final cleaned = _dropShortSegments(segments, minSegmentMs);
-    final refined = _snapToOnsets(cleaned, times, flux, hop / sampleRate);
+    final boundaries = _refineHarmonicBoundaries(
+        cleaned, times, rawChroma, frameSize / (2 * sampleRate));
+    final refined = ChordTimelineFilter.stabilize(
+        boundaries,
+        times.map((t) => t + frameSize / (2 * sampleRate)).toList(),
+        _scoreFrames(rawChroma));
 
     final totalDurationSec = pcm.length / sampleRate;
     final events = <ChordEvent>[];
@@ -286,7 +280,7 @@ class AudioChordDetectorService {
       final t = refined[i].$1;
       final name = refined[i].$2;
       final nextT = i + 1 < refined.length ? refined[i + 1].$1 : totalDurationSec;
-      final durMs = ((nextT - t) * 1000).round().clamp(200, 20000);
+      final durMs = ((nextT - t) * 1000).round();
       events.add(ChordEvent(
         timestamp: Duration(milliseconds: (t * 1000).round()),
         chordName: name,
@@ -407,7 +401,7 @@ class AudioChordDetectorService {
       // Si l'accord engage n'a plus de support, on reduit la barriere d'entree
       final bool committedWeak = committedLowStreak >= confirmFrames;
       final effectiveMargin = committedWeak ? 0.0 : margin;
-      final effectiveConfirm = committedWeak ? (confirmFrames ~/ 2).clamp(2, confirmFrames) : confirmFrames;
+      final effectiveConfirm = committedWeak ? math.max(1, confirmFrames ~/ 2) : confirmFrames;
 
       if (bestName == committed) {
         candidate = null;
@@ -472,39 +466,53 @@ class AudioChordDetectorService {
     return out;
   }
 
-  static List<(double, String)> _snapToOnsets(
+  static List<(double, String)> _refineHarmonicBoundaries(
     List<(double, String)> segs,
     List<double> times,
-    List<double> flux,
-    double hopSec, {
-    double searchSec = 0.35,
-  }) {
+    List<List<double>?> chroma,
+    double frameCenterSec,
+  ) {
     if (segs.isEmpty || times.isEmpty) return segs;
-    final out = <(double, String)>[];
-    for (int i = 0; i < segs.length; i++) {
+    final out = <(double, String)>[segs.first];
+    for (int i = 1; i < segs.length; i++) {
       final t = segs[i].$1;
       final lab = segs[i].$2;
-      if (i == 0) {
-        out.add((t, lab));
-        continue;
-      }
-      final idx = (t / hopSec).round();
-      final span = (searchSec / hopSec).round();
-      final lo = math.max(0, idx - span);
-      final hi = math.min(flux.length, idx + span);
-      if (hi <= lo) {
-        out.add((t, lab));
-        continue;
-      }
-      double bestVal = -1;
-      int bestIdx = idx.clamp(0, flux.length - 1);
-      for (int k = lo; k < hi; k++) {
-        if (flux[k] > bestVal) {
-          bestVal = flux[k];
-          bestIdx = k;
+      final oldTemplate = _templates[segs[i - 1].$2]!;
+      final newTemplate = _templates[lab]!;
+      // Refine a confirmed change using unsmoothed harmonic evidence. The
+      // split maximizes old-chord support before it and new support after it.
+      // Loud percussion alone must not move a change to a neighboring beat.
+      final lower = math.max(out.last.$1 + 0.001, t - 0.5);
+      final upper = math.min(
+          i + 1 < segs.length ? segs[i + 1].$1 - 0.001 : double.infinity,
+          t + 0.15);
+      var prefixScore = 0.0;
+      var bestScore = 0.0;
+      var boundary = t;
+      var sawEvidence = false;
+      for (var k = 0; k < times.length; k++) {
+        final center = times[k] + frameCenterSec;
+        if (center < lower) continue;
+        if (center > upper) break;
+        final c = chroma[k];
+        if (c == null) {
+          // Do not backdate a new chord into a silent gap.
+          prefixScore = 0;
+          bestScore = 0;
+          sawEvidence = false;
+          continue;
+        }
+        if (!sawEvidence) boundary = center;
+        sawEvidence = true;
+        for (var pitch = 0; pitch < 12; pitch++) {
+          prefixScore += c[pitch] * (oldTemplate[pitch] - newTemplate[pitch]);
+        }
+        if (prefixScore > bestScore) {
+          bestScore = prefixScore;
+          boundary = center;
         }
       }
-      out.add((times[bestIdx], lab));
+      out.add((sawEvidence ? boundary : t, lab));
     }
     return out;
   }

@@ -72,6 +72,14 @@ endif()
 set(INSTALL_BUNDLE_DATA_DIR "${CMAKE_INSTALL_PREFIX}/data")
 set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}")
 
+# Optional local analysis engine, installed by tools/setup_chordino.ps1.
+# The app reports unavailability rather than falling back to guessed chords.
+set(CHORDINO_RUNTIME "${CMAKE_CURRENT_SOURCE_DIR}/../tools/chordino-runtime")
+if(EXISTS "${CHORDINO_RUNTIME}/host/sonic-annotator.exe")
+  install(DIRECTORY "${CHORDINO_RUNTIME}/"
+    DESTINATION "${INSTALL_BUNDLE_DATA_DIR}/chordino" COMPONENT Runtime)
+endif()
+
 install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)
 

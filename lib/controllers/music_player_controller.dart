@@ -7,14 +7,19 @@ import 'package:rxdart/rxdart.dart';
 import '../models/song.dart';
 import '../models/lyric_line.dart';
 import '../models/chord_event.dart';
+import '../models/chord_timeline.dart';
 import '../services/youtube_service.dart';
 import '../services/windows_audio_player.dart';
 import '../services/local_audio_proxy.dart';
 import '../services/lrclib_service.dart';
-import '../services/songsterr_service.dart';
+import '../services/stream_chord_analyzer.dart';
 import '../services/audio_chord_detector_service.dart';
+import '../services/capo_chords.dart';
 import '../services/recently_played_service.dart';
 import '../utils/title_parser.dart';
+import '../services/screen_awake_service.dart';
+import '../services/song_key_estimator.dart';
+import '../services/web_lyrics_service.dart';
 
 /// All possible playback states
 enum PlaybackState {
@@ -39,14 +44,25 @@ class MusicPlayerController extends ChangeNotifier {
 
   final YoutubeService _youtubeService = YoutubeService();
   final LrcLibService _lyricsService = LrcLibService();
-  final SongsterrService _chordsService = SongsterrService();
+  final WebLyricsService _webLyrics = WebLyricsService();
+  final StreamChordAnalyzer _streamChordAnalyzer = StreamChordAnalyzer();
+  final ScreenAwakeService _screenAwake = ScreenAwakeService();
 
   // Playback state
   PlaybackState _state = PlaybackState.idle;
   PlaybackState get state => _state;
 
+  double _volume = 1.0;
+  double _volumeBeforeMute = 1.0;
+  double get volume => _volume;
+
+  Future<void> toggleMute() =>
+      setVolume(_volume == 0 ? _volumeBeforeMute : 0);
+
   // Active song data
   Song? _currentSong;
+  int _metadataGeneration = 0;
+  bool _isPreparingPlayback = false;
   Song? get currentSong => _currentSong;
 
   // Lyrics
@@ -58,9 +74,14 @@ class MusicPlayerController extends ChangeNotifier {
 
   // Chords
   List<ChordEvent>? _chords;
+  List<ChordEvent>? _concertChords;
+  final Map<String, int> _selectedCapos = {};
   List<ChordEvent>? get chords => _chords;
+  String _chordStatus = 'Accords indisponibles';
+  String get chordStatus => _chordStatus;
 
   int _currentChordIndex = -1;
+  Duration _chordPosition = Duration.zero;
   int get currentChordIndex => _currentChordIndex;
 
   ChordEvent? get currentChord {
@@ -68,12 +89,12 @@ class MusicPlayerController extends ChangeNotifier {
     if (_currentChordIndex >= 0 && _currentChordIndex < _chords!.length) {
       return _chords![_currentChordIndex];
     }
-    return _chords!.first;
+    return null;
   }
 
   ChordEvent? get nextChord {
     if (_chords == null || _chords!.isEmpty) return null;
-    final targetIdx = _currentChordIndex < 0 ? 1 : _currentChordIndex + 1;
+    final targetIdx = ChordTimeline.nextIndex(_chords!, _chordPosition);
     if (targetIdx < _chords!.length) {
       return _chords![targetIdx];
     }
@@ -83,12 +104,8 @@ class MusicPlayerController extends ChangeNotifier {
   /// Returns the chord associated with a specific lyric line
   ChordEvent? getChordForLyric(LyricLine lyric) {
     if (_chords == null || _chords!.isEmpty) return null;
-    for (int i = _chords!.length - 1; i >= 0; i--) {
-      if (_chords![i].timestamp <= lyric.timestamp) {
-        return _chords![i];
-      }
-    }
-    return _chords!.first;
+    final index = ChordTimeline.activeIndex(_chords!, lyric.timestamp);
+    return index < 0 ? null : _chords![index];
   }
 
   /// Returns all unique chord names used in the song in chronological order
@@ -120,34 +137,41 @@ class MusicPlayerController extends ChangeNotifier {
   int? _capo;
   int? get capo => _capo;
 
-  String? _tuning;
-  String? get tuning => _tuning;
-
-  // Chord synchronization latency calibration (default: 0ms for exact on-beat changes)
-  int _chordOffsetMs = 0;
-  int get chordOffsetMs => _chordOffsetMs;
-
-  void setChordOffset(int offsetMs) {
-    _chordOffsetMs = offsetMs.clamp(-2000, 2000);
-    if (_isWindows) {
-      _syncChords(_windowsPlayer?.position ?? Duration.zero);
-    } else {
-      _syncChords(_audioPlayer?.position ?? Duration.zero);
+  /// null displays concert pitch; an explicit fret displays playable shapes.
+  void setCapo(int? fret) {
+    if (fret != null) RangeError.checkValueInInterval(fret, 0, 12, 'fret');
+    final id = _currentSong?.id;
+    if (id != null) {
+      if (fret == null) {
+        _selectedCapos.remove(id);
+      } else {
+        _selectedCapos[id] = fret;
+      }
     }
+    _capo = fret;
+    _chords = _concertChords?.map((c) => CapoChords.shape(c, fret ?? 0)).toList();
+    _currentChordController.add(currentChord);
     notifyListeners();
   }
 
-  void adjustChordOffset(int deltaMs) {
-    setChordOffset(_chordOffsetMs + deltaMs);
-  }
+  String? _tuning;
+  String? get tuning => _tuning;
 
   // Error message
   String? _errorMessage;
   String? get errorMessage => _errorMessage;
 
-  // Metadata loading flag
+  // Metadata loading flags (chords block playback start, lyrics do not)
   bool _isLoadingMetadata = false;
-  bool get isLoadingMetadata => _isLoadingMetadata;
+  bool _isLoadingLyrics = false;
+  bool get isLoadingMetadata => _isLoadingMetadata || _isLoadingLyrics;
+  bool get isLoadingLyrics => _isLoadingLyrics;
+
+  Duration get _playbackPosition {
+    if (_isPreparingPlayback) return Duration.zero;
+    if (_isWindows) return _windowsPlayer?.position ?? Duration.zero;
+    return _audioPlayer?.position ?? Duration.zero;
+  }
 
   // Streams for reactive UI
   final _stateController = BehaviorSubject<PlaybackState>.seeded(PlaybackState.idle);
@@ -162,8 +186,7 @@ class MusicPlayerController extends ChangeNotifier {
   final _progressController = BehaviorSubject<double>.seeded(0.0);
   Stream<double> get progressStream => _progressController.stream;
 
-  StreamSubscription? _positionSubscription;
-  final List<StreamSubscription> _windowsSubscriptions = [];
+  final List<StreamSubscription> _playerSubscriptions = [];
 
   // Expose the underlying just_audio player for widgets that need it directly
   AudioPlayer? get player => _audioPlayer;
@@ -184,12 +207,12 @@ class MusicPlayerController extends ChangeNotifier {
     return _audioPlayer!.duration;
   }
 
-  MusicPlayerController() {
+  MusicPlayerController({AudioPlayer? audioPlayer}) {
     if (_isWindows) {
       _windowsPlayer = WindowsAudioPlayer();
       _initWindowsListeners();
     } else {
-      _audioPlayer = AudioPlayer();
+      _audioPlayer = audioPlayer ?? AudioPlayer();
       _initJustAudioListeners();
     }
   }
@@ -198,7 +221,8 @@ class MusicPlayerController extends ChangeNotifier {
     final wp = _windowsPlayer!;
 
     // playing=true → playing state; playing=false → paused (unless loading)
-    _windowsSubscriptions.add(wp.playingStream.listen((playing) {
+    _playerSubscriptions.add(wp.playingStream.listen((playing) {
+      if (_isPreparingPlayback) return;
       debugPrint('[MusicPlayerController] Windows playing=$playing');
       if (playing) {
         _updateState(PlaybackState.playing);
@@ -208,7 +232,8 @@ class MusicPlayerController extends ChangeNotifier {
     }));
 
     // Position updates → sync lyrics/chords/progress
-    _windowsSubscriptions.add(wp.positionStream.listen((position) {
+    _playerSubscriptions.add(wp.positionStream.listen((position) {
+      if (_isPreparingPlayback) return;
       if (position > Duration.zero && _state != PlaybackState.playing && _state != PlaybackState.paused) {
         _updateState(PlaybackState.playing);
       }
@@ -222,7 +247,8 @@ class MusicPlayerController extends ChangeNotifier {
     }));
 
     // Buffering → show buffering state
-    _windowsSubscriptions.add(wp.bufferingStream.listen((buffering) {
+    _playerSubscriptions.add(wp.bufferingStream.listen((buffering) {
+      if (_isPreparingPlayback) return;
       if (buffering && _state != PlaybackState.playing) {
         _updateState(PlaybackState.buffering);
       } else if (!buffering && _state == PlaybackState.buffering) {
@@ -231,7 +257,8 @@ class MusicPlayerController extends ChangeNotifier {
     }));
 
     // Completed
-    _windowsSubscriptions.add(wp.completedStream.listen((completed) {
+    _playerSubscriptions.add(wp.completedStream.listen((completed) {
+      if (_isPreparingPlayback) return;
       if (completed) {
         _updateState(PlaybackState.completed);
         _currentLyricIndex = -1;
@@ -242,7 +269,7 @@ class MusicPlayerController extends ChangeNotifier {
     }));
 
     // Errors
-    _windowsSubscriptions.add(wp.errorStream.listen((error) {
+    _playerSubscriptions.add(wp.errorStream.listen((error) {
       if (error != null && error.isNotEmpty) {
         debugPrint('[MusicPlayerController] Windows player error: $error');
         _errorMessage = 'Audio error: $error';
@@ -255,18 +282,17 @@ class MusicPlayerController extends ChangeNotifier {
     final ap = _audioPlayer!;
 
     // Player state changes
-    ap.playerStateStream.listen((playerState) {
+    _playerSubscriptions.add(ap.playerStateStream.listen((playerState) {
+      if (_isPreparingPlayback) return;
       final processingState = playerState.processingState;
       final playing = playerState.playing;
 
-      if (playing) {
-        _updateState(PlaybackState.playing);
-      } else if (processingState == ProcessingState.loading) {
+      if (processingState == ProcessingState.loading) {
         _updateState(PlaybackState.loading);
       } else if (processingState == ProcessingState.buffering) {
         _updateState(PlaybackState.buffering);
       } else if (processingState == ProcessingState.ready) {
-        _updateState(ap.playing ? PlaybackState.playing : PlaybackState.paused);
+        _updateState(playing ? PlaybackState.playing : PlaybackState.paused);
       } else if (processingState == ProcessingState.completed) {
         _updateState(PlaybackState.completed);
         _currentLyricIndex = -1;
@@ -274,29 +300,36 @@ class MusicPlayerController extends ChangeNotifier {
         _currentLyricController.add(null);
         _currentChordController.add(null);
       }
-    });
+    }));
 
-    // Progress updates for slider
-    ap.positionStream.listen((position) {
+    // Subscribe before playback: play() completes only when playback stops.
+    _playerSubscriptions.add(ap.positionStream.listen((position) {
+      if (_isPreparingPlayback) return;
       final duration = ap.duration;
       if (duration != null && duration.inMilliseconds > 0) {
         final progress = position.inMilliseconds / duration.inMilliseconds;
         _progressController.add(progress.clamp(0.0, 1.0));
       }
-    });
+      _syncLyrics(position);
+      _syncChords(position);
+    }));
 
     // Error handling
-    ap.playbackEventStream.listen(
+    _playerSubscriptions.add(ap.playbackEventStream.listen(
       (event) {},
       onError: (Object e, StackTrace st) {
         debugPrint('[MusicPlayerController] Playback event error: $e');
         _errorMessage = 'Audio error: ${e.toString().split('\n').first}';
         _updateState(PlaybackState.error);
       },
-    );
+    ));
   }
 
   void _updateState(PlaybackState newState) {
+    unawaited(_screenAwake.setEnabled(
+      newState == PlaybackState.playing ||
+          (newState == PlaybackState.buffering && _screenAwake.enabled),
+    ));
     _state = newState;
     _stateController.add(newState);
     notifyListeners();
@@ -304,17 +337,23 @@ class MusicPlayerController extends ChangeNotifier {
 
   /// Plays a song (YouTube or local file)
   Future<void> playSong(Song song) async {
+    final generation = ++_metadataGeneration;
+    _isPreparingPlayback = true;
     try {
       _updateState(PlaybackState.loading);
       _errorMessage = null;
       _currentSong = song;
       _lyrics = null;
+      _isLoadingLyrics = false;
       _chords = null;
+      _concertChords = null;
+      _chordStatus = 'Préparation des accords avant lecture…';
       _musicalKey = null;
-      _capo = null;
+      _capo = _selectedCapos[song.id];
       _tuning = null;
       _currentLyricIndex = -1;
       _currentChordIndex = -1;
+      _chordPosition = Duration.zero;
       _progressController.add(0.0);
       _currentLyricController.add(null);
       _currentChordController.add(null);
@@ -323,12 +362,17 @@ class MusicPlayerController extends ChangeNotifier {
       // Automatically persist to recently played songs history
       unawaited(RecentlyPlayedService.addSong(song));
 
-      // Cancel existing sync loop (non-Windows)
-      _positionSubscription?.cancel();
-      _positionSubscription = null;
+      // Stop the previous track while the next track's chords are prepared.
+      if (_isWindows) {
+        await _windowsPlayer!.stop();
+      } else {
+        await _audioPlayer!.stop();
+      }
+      if (generation != _metadataGeneration) return;
 
       // 1. Check if song is an embedded asset track (e.g. acoustic guitar demo)
       if (song.isAsset) {
+        _chordStatus = 'Accords de démonstration';
         _musicalKey = 'G';
         _tuning = 'Standard (E A D G B E)';
         _capo = null;
@@ -350,6 +394,10 @@ class MusicPlayerController extends ChangeNotifier {
           ChordEvent(timestamp: const Duration(seconds: 18), chordName: 'D', fretPositions: [-1, -1, 0, 2, 3, 2]),
         ];
         _isLoadingMetadata = false;
+        _concertChords = _chords;
+        _syncLyrics(Duration.zero);
+        _syncChords(Duration.zero);
+        _isPreparingPlayback = false;
         notifyListeners();
 
         await _playAssetSong(song);
@@ -363,18 +411,23 @@ class MusicPlayerController extends ChangeNotifier {
       final parsed = TitleParser.extractArtistAndTitle(song.title, song.artist);
       debugPrint('[MusicPlayerController] Starting metadata load for: "${parsed.artist}" - "${parsed.title}"');
 
-      unawaited(() async {
-        await _loadLyrics(parsed.title, parsed.artist, song.durationSeconds);
-        // Synchronize chords with lyric timestamps
-        await _loadChords(
-          parsed.title,
-          parsed.artist,
-          lyrics: _lyrics,
-          durationSeconds: song.durationSeconds,
-        );
-        _isLoadingMetadata = false;
-        notifyListeners();
-      }());
+      // Lyrics never delay playback: LRCLIB is quick, but the web-search
+      // fallback can take a while, so they are applied whenever they arrive.
+      _isLoadingLyrics = true;
+      unawaited(_loadLyrics(parsed.title, parsed.artist, song.durationSeconds, generation));
+      // Chords are prepared before playback so they are in sync from 0:00.
+      await _loadChords(song, generation: generation);
+      if (generation != _metadataGeneration) return;
+      _isLoadingMetadata = false;
+      if (_chords == null || _chords!.isEmpty) {
+        // Missing chords (web build, analysis failure…) must not block
+        // listening: the status text already explains the situation.
+        debugPrint('[MusicPlayerController] No chords available, playing anyway');
+      }
+      _syncLyrics(Duration.zero);
+      _syncChords(Duration.zero);
+      _isPreparingPlayback = false;
+      notifyListeners();
 
       // 3. Audio playback
       if (song.isLocal) {
@@ -383,6 +436,10 @@ class MusicPlayerController extends ChangeNotifier {
         await _playYouTubeSong(song);
       }
     } catch (e) {
+      if (generation != _metadataGeneration) return;
+      _isPreparingPlayback = false;
+      _isLoadingMetadata = false;
+      _isLoadingLyrics = false;
       if (e.toString().contains('Loading interrupted') || e.toString().contains('interrupted')) {
         debugPrint('[MusicPlayerController] Ignored loading interrupted during transition');
         return;
@@ -447,10 +504,6 @@ class MusicPlayerController extends ChangeNotifier {
       }
 
       debugPrint('[MusicPlayerController] Asset playback started');
-      if (!_isWindows) {
-        _updateState(PlaybackState.playing);
-        _startSyncLoop();
-      }
     } catch (e) {
       debugPrint('[MusicPlayerController] Asset playback error: $e');
       _errorMessage = 'Erreur audio : ${e.toString().split('\n').first}';
@@ -492,8 +545,6 @@ class MusicPlayerController extends ChangeNotifier {
           );
           await _audioPlayer!.play();
           playbackStarted = true;
-          _updateState(PlaybackState.playing);
-          _startSyncLoop();
         } catch (proxyError) {
           debugPrint('[MusicPlayerController] Mobile proxy streaming failed: $proxyError. Trying download fallback...');
         }
@@ -519,8 +570,6 @@ class MusicPlayerController extends ChangeNotifier {
             ),
           );
           await _audioPlayer!.play();
-          _updateState(PlaybackState.playing);
-          _startSyncLoop();
         }
       } else {
         // Web / fallback
@@ -533,8 +582,6 @@ class MusicPlayerController extends ChangeNotifier {
         await _audioPlayer!.stop();
         await _audioPlayer!.setUrl(streamUrl);
         await _audioPlayer!.play();
-        _updateState(PlaybackState.playing);
-        _startSyncLoop();
       }
     } catch (e) {
       if (e.toString().contains('Loading interrupted') || e.toString().contains('interrupted')) {
@@ -590,13 +637,9 @@ class MusicPlayerController extends ChangeNotifier {
           );
         }
         await _audioPlayer!.play();
-        _updateState(PlaybackState.playing);
-        _startSyncLoop();
       } else {
         await _audioPlayer!.setFilePath(path);
         await _audioPlayer!.play();
-        _updateState(PlaybackState.playing);
-        _startSyncLoop();
       }
     } catch (e) {
       if (e.toString().contains('Loading interrupted') || e.toString().contains('interrupted')) {
@@ -609,93 +652,127 @@ class MusicPlayerController extends ChangeNotifier {
     }
   }
 
-  Future<void> _loadLyrics(String title, String artist, int? durationSeconds) async {
+  Future<void> _loadLyrics(String title, String artist, int? durationSeconds, int generation) async {
     try {
-      _lyrics = await _lyricsService.fetchSyncedLyrics(
+      var lyrics = await _lyricsService.fetchSyncedLyrics(
         trackName: title,
         artistName: artist,
         duration: durationSeconds,
       );
+      if (generation != _metadataGeneration) return;
+      if (lyrics == null || lyrics.isEmpty) {
+        // Not on LRCLIB: take the first web search result, even unsynced.
+        debugPrint('[MusicPlayerController] LRCLIB has no lyrics, searching the web…');
+        lyrics = await _webLyrics.search(title, artist,
+            isCurrent: () => generation == _metadataGeneration);
+      }
+      if (generation != _metadataGeneration) return;
+      if (lyrics != null && lyrics.isNotEmpty && lyrics.first.isSynced) {
+        lyrics = _sortedByTimestamp(lyrics);
+      }
+      _lyrics = lyrics;
+      _currentLyricIndex = -1;
+      _currentLyricController.add(null);
+      _syncLyrics(_playbackPosition);
 
       if (_lyrics != null) {
-        debugPrint('[MusicPlayerController] Loaded ${_lyrics!.length} lyric lines');
+        debugPrint('[MusicPlayerController] Loaded ${_lyrics!.length} lyric lines'
+            '${_lyrics!.first.isSynced ? '' : ' (unsynced, ${_lyrics!.first.sourceUrl?.host})'}');
       } else {
         debugPrint('[MusicPlayerController] No lyrics found');
       }
     } catch (e) {
+      if (generation != _metadataGeneration) return;
       debugPrint('[MusicPlayerController] Lyrics load error: $e');
       _lyrics = null;
+    } finally {
+      if (generation == _metadataGeneration) _isLoadingLyrics = false;
     }
     notifyListeners();
+  }
+
+  /// Stable sort so binary search in [_syncLyrics] is valid even for LRC
+  /// files whose lines are not strictly chronological.
+  static List<LyricLine> _sortedByTimestamp(List<LyricLine> lines) {
+    final indexed = List.generate(lines.length, (i) => i);
+    indexed.sort((a, b) {
+      final byTime = lines[a].timestamp.compareTo(lines[b].timestamp);
+      return byTime != 0 ? byTime : a.compareTo(b);
+    });
+    return [for (final i in indexed) lines[i]];
   }
 
   Future<void> _loadChords(
-    String title,
-    String artist, {
-    List<LyricLine>? lyrics,
-    int? durationSeconds,
+    Song song, {
+    required int generation,
   }) async {
     try {
-      // Priority 1: analyse the local audio file directly (WAV native, or
-      // MP3/M4A/AAC/FLAC/OGG/OPUS/WMA converted via OS-native APIs —
-      // Media Foundation on Windows, MediaExtractor/MediaCodec on Android).
-      // Falls back to the Songsterr API when no local path is available or
-      // the file format is not supported (e.g. remote YouTube streams).
+      // Both local files and YouTube use audio time, independent of lyrics.
       SongChordsResult? result;
-      final localPath = _currentSong?.localPath;
+      final localPath = song.localPath;
       if (localPath != null) {
         result = await AudioChordDetectorService.analyzeAudioFile(localPath);
-        if (result != null) {
-          debugPrint('[MusicPlayerController] Chords from local audio analysis ($localPath)');
-        }
+      } else if (!kIsWeb) {
+        final url = await LocalAudioProxy.instance.getProxyStreamUrl(song.id);
+        if (generation != _metadataGeneration) return;
+        result = await _streamChordAnalyzer.analyze(Uri.parse(url),
+            isCurrent: () => generation == _metadataGeneration);
       }
 
-      result ??= await _chordsService.fetchChords(
-        title: title,
-        artist: artist,
-        lyrics: lyrics,
-        durationSeconds: durationSeconds,
-      );
-
-      _chords = result.chords;
-      _musicalKey = result.musicalKey;
-      _capo = result.capo;
-      _tuning = result.tuning;
+      if (generation != _metadataGeneration) return;
+      _concertChords = result?.chords;
+      _chords = _concertChords?.map((c) => CapoChords.shape(c, _capo ?? 0)).toList();
+      _musicalKey = SongKeyEstimator.estimate(_concertChords ?? []);
+      _tuning = result?.tuning;
+      _chordStatus = result != null && result.chords.isNotEmpty
+          ? result.analysisMethod ?? 'Accords estimés · moteur expérimental'
+          : 'Accords indisponibles · analyse audio non concluante';
+      _currentChordIndex = -1;
+      _syncChords(_playbackPosition);
 
       debugPrint('[MusicPlayerController] Loaded ${_chords?.length ?? 0} chords (Key: $_musicalKey, Capo: $_capo)');
     } catch (e) {
+      if (generation != _metadataGeneration) return;
       debugPrint('[MusicPlayerController] Chords load error: $e');
       _chords = null;
+      _concertChords = null;
       _musicalKey = null;
-      _capo = null;
       _tuning = null;
+      _chordStatus = 'Analyse audio impossible · aucun accord généré';
     }
     notifyListeners();
   }
 
-  /// Main synchronization loop (non-Windows, handled via stream listener on Windows)
-  void _startSyncLoop() {
-    _positionSubscription?.cancel();
-    _positionSubscription = _audioPlayer!.positionStream.listen((position) {
-      _syncLyrics(position);
-      _syncChords(position);
-    });
-  }
-
   void _syncLyrics(Duration position) {
-    if (_lyrics == null || _lyrics!.isEmpty) return;
+    final lyrics = _lyrics;
+    if (lyrics == null || lyrics.isEmpty) return;
+    if (!lyrics.first.isSynced) return;
 
-    int newIndex = -1;
-    for (int i = _lyrics!.length - 1; i >= 0; i--) {
-      if (_lyrics![i].timestamp <= position) {
-        newIndex = i;
-        break;
+    // Fast path (runs on every position tick): still inside the active line.
+    final current = _currentLyricIndex;
+    if (current >= 0 &&
+        current < lyrics.length &&
+        lyrics[current].timestamp <= position &&
+        (current + 1 >= lyrics.length || position < lyrics[current + 1].timestamp)) {
+      return;
+    }
+
+    // Binary search for the last line starting at or before [position].
+    var lo = 0;
+    var hi = lyrics.length;
+    while (lo < hi) {
+      final mid = (lo + hi) >> 1;
+      if (lyrics[mid].timestamp <= position) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
       }
     }
+    final newIndex = lo - 1;
 
     if (newIndex != _currentLyricIndex) {
       _currentLyricIndex = newIndex;
-      _currentLyricController.add(newIndex >= 0 ? _lyrics![newIndex] : null);
+      _currentLyricController.add(newIndex >= 0 ? lyrics[newIndex] : null);
       notifyListeners();
     }
   }
@@ -703,24 +780,10 @@ class MusicPlayerController extends ChangeNotifier {
   void _syncChords(Duration position) {
     if (_chords == null || _chords!.isEmpty) return;
 
-    // Compensate for premature lyric timing so chords trigger exactly on the beat
-    final effectivePosition = position - Duration(milliseconds: _chordOffsetMs);
-    if (effectivePosition < Duration.zero) {
-      if (_currentChordIndex != 0) {
-        _currentChordIndex = 0;
-        _currentChordController.add(_chords!.first);
-        notifyListeners();
-      }
-      return;
-    }
-
-    int newIndex = -1;
-    for (int i = _chords!.length - 1; i >= 0; i--) {
-      if (_chords![i].timestamp <= effectivePosition) {
-        newIndex = i;
-        break;
-      }
-    }
+    // Use audio timestamps, respecting gaps rather than holding an old chord.
+    final effectivePosition = position;
+    _chordPosition = effectivePosition;
+    final newIndex = ChordTimeline.activeIndex(_chords!, effectivePosition);
 
     if (newIndex != _currentChordIndex) {
       _currentChordIndex = newIndex;
@@ -731,6 +794,7 @@ class MusicPlayerController extends ChangeNotifier {
 
   // Transport controls
   Future<void> togglePlayPause() async {
+    if (_isPreparingPlayback) return;
     if (_state == PlaybackState.playing) {
       await pause();
     } else if (_state == PlaybackState.paused) {
@@ -750,6 +814,7 @@ class MusicPlayerController extends ChangeNotifier {
   }
 
   Future<void> resume() async {
+    if (_isPreparingPlayback) return;
     if (_isWindows) {
       if (_windowsPlayer!.duration == null) {
         await playSong(_currentSong!);
@@ -766,6 +831,7 @@ class MusicPlayerController extends ChangeNotifier {
   }
 
   Future<void> seek(Duration position) async {
+    if (_isPreparingPlayback) return;
     if (_isWindows) {
       await _windowsPlayer!.seek(position);
     } else {
@@ -787,22 +853,29 @@ class MusicPlayerController extends ChangeNotifier {
   }
 
   Future<void> setVolume(double volume) async {
+    if (!volume.isFinite) return;
+    final level = volume.clamp(0.0, 1.0);
+    if (level > 0) _volumeBeforeMute = level;
+    _volume = level;
+    notifyListeners();
     if (_isWindows) {
-      await _windowsPlayer!.setVolume(volume);
+      await _windowsPlayer!.setVolume(level);
     } else {
-      await _audioPlayer!.setVolume(volume.clamp(0.0, 1.0));
+      await _audioPlayer!.setVolume(level);
     }
   }
 
   @override
   void dispose() {
-    _positionSubscription?.cancel();
-    for (final sub in _windowsSubscriptions) {
+    unawaited(_screenAwake.setEnabled(false));
+    _metadataGeneration++;
+    for (final sub in _playerSubscriptions) {
       sub.cancel();
     }
     _windowsPlayer?.dispose();
     _audioPlayer?.dispose();
     _youtubeService.dispose();
+    _webLyrics.dispose();
     _stateController.close();
     _currentLyricController.close();
     _currentChordController.close();

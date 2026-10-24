@@ -27,7 +27,9 @@ class YoutubeService {
 
     // Attempt 2: Fallback to youtube_explode searchContent
     try {
-      final searchResults = await _yt.search.searchContent(query);
+      final searchResults = await _yt.search
+          .searchContent(query)
+          .timeout(const Duration(seconds: 20));
       final songs = <Song>[];
       for (final item in searchResults) {
         if (item is SearchVideo) {
@@ -71,7 +73,7 @@ class YoutubeService {
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       },
       body: jsonEncode(payload),
-    );
+    ).timeout(const Duration(seconds: 12));
 
     if (response.statusCode != 200) {
       throw HttpException('Innertube returned ${response.statusCode}');

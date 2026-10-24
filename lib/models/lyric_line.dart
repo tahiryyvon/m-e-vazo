@@ -5,11 +5,15 @@ class LyricLine {
   final Duration timestamp;
   final String text;
   final bool isEmpty;
+  final bool isSynced;
+  final Uri? sourceUrl;
 
   LyricLine({
     required this.timestamp,
     required this.text,
     this.isEmpty = false,
+    this.isSynced = true,
+    this.sourceUrl,
   });
 
   /// Parse une ligne au format LRC: [mm:ss.xx] ou [mm:ss.xxx]

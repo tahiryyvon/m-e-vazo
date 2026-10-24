@@ -34,11 +34,13 @@ class SongChordsResult {
   final String? musicalKey;
   final int? capo;
   final String? tuning;
+  final String? analysisMethod;
 
   SongChordsResult({
     required this.chords,
     this.musicalKey,
     this.capo,
     this.tuning,
+    this.analysisMethod,
   });
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../controllers/music_player_controller.dart';
@@ -17,14 +18,25 @@ class PlayerScreen extends StatefulWidget {
 class _PlayerScreenState extends State<PlayerScreen> {
   Duration _position = Duration.zero;
   String? _lastSongId;
+  StreamSubscription<Duration>? _positionSubscription;
 
   @override
   void initState() {
     super.initState();
     _lastSongId = widget.controller.currentSong?.id;
-    widget.controller.positionStream.listen((pos) {
-      if (mounted) setState(() => _position = pos);
+    // Position ticks arrive many times per second; the whole screen only
+    // needs a rebuild when the displayed second changes (lyrics and chords
+    // are driven by the controller's own notifications).
+    _positionSubscription = widget.controller.positionStream.listen((pos) {
+      if (!mounted || pos.inSeconds == _position.inSeconds) return;
+      setState(() => _position = pos);
     });
+  }
+
+  @override
+  void dispose() {
+    _positionSubscription?.cancel();
+    super.dispose();
   }
 
   String _formatDuration(Duration d) {
@@ -497,6 +509,39 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 icon: Icons.forward_10_rounded,
                 size: 26,
                 onPressed: widget.controller.seekForward,
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              IconButton(
+                tooltip: widget.controller.volume == 0
+                    ? 'Rétablir le son'
+                    : 'Couper le son',
+                onPressed: widget.controller.toggleMute,
+                icon: Icon(
+                  widget.controller.volume == 0
+                      ? Icons.volume_off_rounded
+                      : Icons.volume_up_rounded,
+                  color: Colors.white70,
+                ),
+              ),
+              Expanded(
+                child: Slider(
+                  value: widget.controller.volume,
+                  label: '${(widget.controller.volume * 100).round()} %',
+                  semanticFormatterCallback: (value) =>
+                      'Volume : ${(value * 100).round()} %',
+                  onChanged: widget.controller.setVolume,
+                ),
+              ),
+              SizedBox(
+                width: 44,
+                child: Text(
+                  '${(widget.controller.volume * 100).round()} %',
+                  textAlign: TextAlign.end,
+                  style: const TextStyle(color: Colors.white70, fontSize: 11),
+                ),
               ),
             ],
           ),

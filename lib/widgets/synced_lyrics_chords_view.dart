@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../services/web_lyrics_service.dart';
+import '../utils/title_parser.dart';
 import '../controllers/music_player_controller.dart';
 import '../models/chord_event.dart';
 import 'chord_diagram.dart';
@@ -43,6 +46,7 @@ class _SyncedLyricsChordsViewState extends State<SyncedLyricsChordsView> {
   }
 
   void _maybeScrollToActive() {
+    if (widget.controller.lyrics?.firstOrNull?.isSynced == false) return;
     final idx = widget.controller.currentLyricIndex;
     if (idx < 0 || idx == _lastScrolledIndex) return;
     if (!_scrollController.hasClients) return;
@@ -76,6 +80,23 @@ class _SyncedLyricsChordsViewState extends State<SyncedLyricsChordsView> {
 
         return Column(
           children: [
+            if (allLyrics != null && allLyrics.isNotEmpty && !allLyrics.first.isSynced)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    const Text('Paroles non synchronisées · défilement manuel',
+                        style: TextStyle(color: Colors.white70, fontSize: 11)),
+                    if (allLyrics.first.sourceUrl != null)
+                      TextButton(
+                        onPressed: () => _openSource(allLyrics.first.sourceUrl!),
+                        child: Text('Source : ${allLyrics.first.sourceUrl!.host}'),
+                      ),
+                  ],
+                ),
+              ),
             // ── Lyrics Section ─────────────────────────────────────
             Expanded(
               child: allLyrics != null && allLyrics.isNotEmpty
@@ -98,27 +119,11 @@ class _SyncedLyricsChordsViewState extends State<SyncedLyricsChordsView> {
     List<dynamic>? allLyrics,
     int currentLyricIndex,
   ) {
-    // Find chords for the active lyric line
-    List<ChordEvent> displayChords = [];
-    if (allLyrics != null &&
-        currentLyricIndex >= 0 &&
-        currentLyricIndex < allLyrics.length) {
-      final lineStart = allLyrics[currentLyricIndex].timestamp as Duration;
-      final lineEnd = currentLyricIndex + 1 < allLyrics.length
-          ? (allLyrics[currentLyricIndex + 1].timestamp as Duration)
-          : lineStart + const Duration(seconds: 4);
-      displayChords = widget.controller.chords?.where((c) =>
-        c.timestamp >= lineStart && c.timestamp < lineEnd
-      ).toList() ?? [];
-    }
-
-    // Fallback: if current line has no specific chords, show currentChord & nextChord
-    if (displayChords.isEmpty) {
-      if (currentChord != null) displayChords.add(currentChord);
-      if (nextChord != null && nextChord.chordName != currentChord?.chordName) {
-        displayChords.add(nextChord);
-      }
-    }
+    // Audio time is authoritative; lyric lines must not select active chords.
+    final displayChords = <ChordEvent>[
+      if (currentChord != null) currentChord,
+      if (nextChord != null && nextChord.chordName != currentChord?.chordName) nextChord,
+    ];
 
     final hasChords = displayChords.isNotEmpty || currentChord != null;
     if (!hasChords && !widget.showChordsHeader) {
@@ -197,9 +202,11 @@ class _SyncedLyricsChordsViewState extends State<SyncedLyricsChordsView> {
           ),
 
           // In mobile mode with diagrams enabled: display compact diagrams below the chips
-          if (widget.showChordsHeader && currentChord != null) ...[
+          if (widget.showChordsHeader) ...[
             const SizedBox(height: 6),
             HarmonicInfoBar(controller: widget.controller),
+          ],
+          if (widget.showChordsHeader && currentChord != null) ...[
             const SizedBox(height: 4),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -297,7 +304,7 @@ class _SyncedLyricsChordsViewState extends State<SyncedLyricsChordsView> {
 
         return InkWell(
           key: _lyricKeys[index],
-          onTap: () => widget.controller.seek(lyric.timestamp),
+          onTap: lyric.isSynced ? () => widget.controller.seek(lyric.timestamp) : null,
           borderRadius: BorderRadius.circular(10),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 350),
@@ -329,7 +336,7 @@ class _SyncedLyricsChordsViewState extends State<SyncedLyricsChordsView> {
                   height: 1.4,
                 ),
                 child: Text(
-                  lyric.text.isEmpty ? '♫' : lyric.text,
+                  lyric.text.isEmpty && lyric.isSynced ? '♫' : lyric.text,
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -340,8 +347,21 @@ class _SyncedLyricsChordsViewState extends State<SyncedLyricsChordsView> {
     );
   }
 
+  Future<void> _openSource(Uri uri) async {
+    try {
+      if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+    } catch (_) {
+      // Show an actionable failure without disturbing playback.
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Impossible d’ouvrir le navigateur.')),
+      );
+    }
+  }
+
   Widget _buildLyricsPlaceholder() {
-    final isLoading = widget.controller.isLoadingMetadata;
+    final isLoading = widget.controller.isLoadingLyrics;
     final hasSong = widget.controller.currentSong != null;
 
     if (isLoading) {
@@ -359,8 +379,13 @@ class _SyncedLyricsChordsViewState extends State<SyncedLyricsChordsView> {
             ),
             const SizedBox(height: 14),
             Text(
-              'Loading lyrics...',
+              'Recherche des paroles…',
               style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 14),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'LRCLIB puis recherche web · la lecture continue',
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.2), fontSize: 11),
             ),
           ],
         ),
@@ -374,9 +399,19 @@ class _SyncedLyricsChordsViewState extends State<SyncedLyricsChordsView> {
           Icon(Icons.lyrics_rounded, size: 48, color: Colors.white.withValues(alpha: 0.1)),
           const SizedBox(height: 12),
           Text(
-            hasSong ? 'No lyrics found' : 'Play a song to see lyrics',
+            hasSong ? 'Paroles introuvables' : 'Lance un morceau pour voir les paroles',
             style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 14),
           ),
+          if (hasSong)
+            TextButton.icon(
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('Rechercher les paroles sur le Web'),
+              onPressed: () {
+                final song = widget.controller.currentSong!;
+                final parsed = TitleParser.extractArtistAndTitle(song.title, song.artist);
+                _openSource(WebLyricsService.searchUrl(parsed.title, parsed.artist));
+              },
+            ),
         ],
       ),
     );

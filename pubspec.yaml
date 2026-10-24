@@ -28,6 +28,8 @@ dependencies:
 
   # HTTP networking
   http: ^1.2.1
+  html: ^0.15.6
+  url_launcher: ^6.3.2
 
   # State management
   flutter_riverpod: ^2.5.1

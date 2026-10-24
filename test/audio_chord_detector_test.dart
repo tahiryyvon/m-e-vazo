@@ -72,6 +72,85 @@ Float32List _synthProgression(List<MapEntry<String, double>> seq) {
 }
 
 void main() {
+  test('localise les changements sans silence entre accords tenus', () {
+    final pcm = Float32List(_sr * 6);
+    const frequencies = [
+      [261.63, 329.63, 392.0],
+      [293.66, 369.99, 440.0],
+      [220.0, 261.63, 329.63],
+    ];
+    for (var i = 0; i < pcm.length; i++) {
+      final t = i / _sr;
+      for (final f in frequencies[i ~/ (_sr * 2)]) {
+        pcm[i] += 0.15 * math.sin(2 * math.pi * f * t);
+      }
+    }
+    final result = AudioChordDetectorService.analyzePcm(pcm, _sr);
+    for (final entry in {'D': 2000, 'Am': 4000}.entries) {
+      final event = result.chords.firstWhere((c) => c.chordName == entry.key);
+      expect((event.timestamp.inMilliseconds - entry.value).abs(), lessThan(150));
+    }
+  });
+
+  test('changements harmoniques non deplaces par une percussion decalee', () {
+    final pcm = _synthProgression([
+      const MapEntry('G', 2.0), const MapEntry('Em', 2.0),
+      const MapEntry('C', 2.0), const MapEntry('D', 2.0),
+    ]);
+    final random = math.Random(51);
+    for (final time in [2.22, 4.22, 6.22]) {
+      final start = (time * _sr).round();
+      for (var n = 0; n < (_sr * 0.04).round(); n++) {
+        pcm[start + n] += (random.nextDouble() * 2 - 1) * 1.5;
+      }
+    }
+    final result = AudioChordDetectorService.analyzePcm(pcm, _sr);
+    for (final entry in {'Em': 2000, 'C': 4000, 'D': 6000}.entries) {
+      final event = result.chords.firstWhere((c) => c.chordName == entry.key);
+      expect((event.timestamp.inMilliseconds - entry.value).abs(), lessThan(150),
+          reason: '${entry.key}: ${event.timestamp.inMilliseconds}ms');
+    }
+  });
+
+  test('conserve les accords de 500ms dans un passage rapide', () {
+    final pcm = _synthProgression([
+      const MapEntry('G', 1.5), const MapEntry('C', 0.5),
+      const MapEntry('D', 0.5), const MapEntry('Am', 1.5),
+    ]);
+    final result = AudioChordDetectorService.analyzePcm(pcm, _sr);
+    expect(result.chords.map((c) => c.chordName), containsAllInOrder(['G', 'C', 'D', 'Am']));
+  });
+
+  test('un accord instrumental tenu conserve toute sa duree', () {
+    final pcm = Float32List(_sr * 25);
+    for (var i = 0; i < pcm.length; i++) {
+      final t = i / _sr;
+      pcm[i] = 0.2 * (math.sin(2 * math.pi * 261.63 * t) +
+          math.sin(2 * math.pi * 329.63 * t) +
+          math.sin(2 * math.pi * 392.00 * t));
+    }
+    final result = AudioChordDetectorService.analyzePcm(pcm, _sr);
+    expect(result.chords, hasLength(1));
+    expect(result.chords.single.chordName, 'C');
+    expect(result.chords.single.durationMs, 25000);
+  });
+
+  test('confirmation rapide ne plante pas aux changements', () {
+    final pcm = _synthProgression([
+      const MapEntry('G', 2.0),
+      const MapEntry('Am', 2.0),
+      const MapEntry('D', 2.0),
+    ]);
+    final result = AudioChordDetectorService.analyzePcm(
+        pcm, _sr, confirmFrames: 1);
+    expect(result.chords, isNotEmpty);
+    for (var i = 1; i < result.chords.length; i++) {
+      expect(result.chords[i].timestamp,
+          greaterThan(result.chords[i - 1].timestamp));
+      expect(result.chords[i - 1].durationMs, greaterThan(0));
+    }
+  });
+
   test('detecte une progression G - Em - C - D avec latence < 300ms', () {
     final seq = [
       const MapEntry('G', 2.0),

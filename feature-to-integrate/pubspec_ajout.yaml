@@ -1,0 +1,7 @@
+# A ajouter dans pubspec.yaml, sous "dependencies:"
+# Decode MP3/M4A/AAC/FLAC/OGG/... via API natives OS (Media Foundation sur
+# Windows, MediaExtractor/MediaCodec sur Android) - pas de FFmpeg, ~500KB.
+  audio_decoder: ^0.8.1
+
+# Puis :
+#   flutter pub get

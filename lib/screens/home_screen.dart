@@ -178,7 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             fit: BoxFit.scaleDown,
                             alignment: Alignment.centerLeft,
                             child: Text(
-                              "M' e-Vazo",
+                              "M'e-Vazo",
                               style: GoogleFonts.righteous(
                                 color: Colors.white,
                                 fontSize: 24,

@@ -1,12 +1,12 @@
 {
-    "name": "guitar_lyrics_player",
-    "short_name": "guitar_lyrics_player",
+    "name": "M'e-Vazo",
+    "short_name": "M'e-Vazo",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "background_color": "#0D0D0D",
+    "theme_color": "#FF8C00",
+    "description": "Lecteur musical avec paroles synchronisées et accords de guitare.",
+    "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
         {

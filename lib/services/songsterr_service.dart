@@ -640,6 +640,25 @@ class SongsterrService {
             fretPositions: standardChordPositions[chord1],
           ));
         }
+
+        // Keep the approximate accompaniment running through interludes and
+        // the outro, even when there are no more lyric timestamps.
+        final gapEndMs = nextLine?.timestamp.inMilliseconds ?? durationSeconds * 1000;
+        var gapMs = line.timestamp.inMilliseconds + lineDuration;
+        var instrumentalIndex = 0;
+        final instrumentalChords = nextLine == null ? chorusChords : bridgeChords;
+        while (gapMs < gapEndMs) {
+          final chord = instrumentalChords[instrumentalIndex % instrumentalChords.length];
+          final durationMs = (gapEndMs - gapMs).clamp(1, 2500);
+          events.add(ChordEvent(
+            timestamp: Duration(milliseconds: gapMs),
+            chordName: chord,
+            durationMs: durationMs,
+            fretPositions: standardChordPositions[chord],
+          ));
+          gapMs += durationMs;
+          instrumentalIndex++;
+        }
       }
     } else {
       const measureDurationSec = 3;
