@@ -5,6 +5,7 @@ import '../models/song.dart';
 import 'search_screen.dart';
 import 'player_screen.dart';
 import 'library_screen.dart';
+import 'mic_listen_screen.dart';
 import '../widgets/mini_player.dart';
 import '../widgets/player_keyboard_controls.dart';
 
@@ -42,6 +43,7 @@ class _HomeScreenState extends State<HomeScreen> {
       PlayerScreen(controller: _controller),
       LibraryScreen(onSongSelected: _onSongSelected,
         onQueueChanged: _controller.setPlaybackQueue),
+      const MicListenScreen(),
     ];
 
     return PlayerKeyboardControls(
@@ -111,6 +113,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     icon: Icons.library_music_rounded,
                     isSelected: _currentIndex == 2,
                     onTap: () => setState(() => _currentIndex = 2),
+                  ),
+                  const SizedBox(height: 4),
+                  _NavRailIcon(
+                    icon: Icons.mic_rounded,
+                    isSelected: _currentIndex == 3,
+                    onTap: () => setState(() => _currentIndex = 3),
                   ),
                   const Spacer(),
                 ],
@@ -237,6 +245,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     isSelected: _currentIndex == 2,
                     onTap: () => setState(() => _currentIndex = 2),
                   ),
+                  _SidebarItem(
+                    icon: Icons.mic_rounded,
+                    label: 'Écoute micro',
+                    isSelected: _currentIndex == 3,
+                    onTap: () => setState(() => _currentIndex = 3),
+                  ),
 
                   const Spacer(),
 
@@ -320,6 +334,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     icon: Icon(Icons.library_music_rounded),
                     activeIcon: Icon(Icons.library_music_rounded),
                     label: 'Library',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.mic_rounded),
+                    activeIcon: Icon(Icons.mic_rounded),
+                    label: 'Micro',
                   ),
                 ],
               ),

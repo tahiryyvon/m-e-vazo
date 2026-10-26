@@ -176,6 +176,59 @@ class AudioChordDetectorService {
     return analyzePcm(wav.samples, wav.sampleRate);
   }
 
+  /// Fondamentale dominante d'un court extrait PCM mono (ecoute micro,
+  /// accordeur). Spectre produit harmonique (3 harmoniques) entre 60 et
+  /// 1200 Hz, puis interpolation parabolique du pic. Retourne la frequence
+  /// en Hz et une force relative 0..1, ou null si l'extrait est silencieux.
+  static (double, double)? estimatePitch(
+    Float32List pcm,
+    int sampleRate, {
+    int frameSize = 8192,
+    double minEnergy = 0.003,
+  }) {
+    if (pcm.length < frameSize) return null;
+    final start = pcm.length - frameSize;
+    final real = Float64List(frameSize);
+    final imag = Float64List(frameSize);
+    double energy = 0;
+    for (int n = 0; n < frameSize; n++) {
+      final s = pcm[start + n];
+      real[n] = s * (0.5 - 0.5 * math.cos(2 * math.pi * n / (frameSize - 1)));
+      energy += s * s;
+    }
+    if (math.sqrt(energy / frameSize) < minEnergy) return null;
+    _Fft.transform(real, imag);
+    final half = frameSize ~/ 2;
+    final mag = Float64List(half);
+    for (int k = 0; k < half; k++) {
+      mag[k] = math.sqrt(real[k] * real[k] + imag[k] * imag[k]);
+    }
+    final binHz = sampleRate / frameSize;
+    final kMin = (60 / binHz).ceil();
+    final kMax = math.min((1200 / binHz).floor(), half ~/ 3 - 1);
+    if (kMax <= kMin) return null;
+    // Harmonic product spectrum: a true fundamental is also present at 2f and 3f.
+    var bestK = -1;
+    var bestScore = 0.0;
+    var total = 0.0;
+    for (int k = kMin; k <= kMax; k++) {
+      final score = mag[k] * mag[2 * k] * mag[3 * k];
+      total += score;
+      if (score > bestScore) {
+        bestScore = score;
+        bestK = k;
+      }
+    }
+    if (bestK <= 0 || bestScore <= 0) return null;
+    // Parabolic interpolation on the raw magnitude around the chosen bin.
+    final a = mag[bestK - 1], b = mag[bestK], c = mag[bestK + 1];
+    final denom = a - 2 * b + c;
+    final delta = denom == 0 ? 0.0 : 0.5 * (a - c) / denom;
+    final frequency = (bestK + delta.clamp(-0.5, 0.5)) * binHz;
+    final strength = total <= 0 ? 0.0 : (bestScore / total).clamp(0.0, 1.0);
+    return (frequency, strength);
+  }
+
   /// Analyse un buffer PCM mono deja decode et retourne la timeline d'accords.
   static SongChordsResult analyzePcm(
     Float32List pcm,

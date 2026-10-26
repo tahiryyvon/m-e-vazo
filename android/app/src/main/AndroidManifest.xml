@@ -9,6 +9,9 @@
     <!-- Wake lock to keep audio playing in background -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Microphone listening: live chord and note detection -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <!-- Foreground service for background audio playback -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />

@@ -52,6 +52,7 @@ dependencies:
 
   # Permissions (Android local file access)
   permission_handler: ^11.3.1
+  record: ^6.2.1
 
 dev_dependencies:
   flutter_test:
