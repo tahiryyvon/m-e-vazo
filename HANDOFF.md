@@ -15,6 +15,7 @@
 
 - Web dans un vrai navigateur : accueil, bibliothèque, lecture de la démo avec accords et paroles synchronisés, aucune erreur console. Le bouton « Plein écran » est en bas à droite.
 - Repli web des paroles (hors Web) : LRCLIB puis Google → DuckDuckGo → Bing, première page pertinente, texte non synchronisé avec lien source. Google renvoie une page « JavaScript requis » aux clients non navigateur : DuckDuckGo et Bing prennent le relais.
+- Troisième niveau (hors Web) : description puis commentaires de la vidéo YouTube (`YoutubeLyricsService` + `LyricsTextExtractor`). Pour un fichier local, la vidéo est d'abord cherchée sur YouTube. Facebook et les autres réseaux ne sont pas lisibles sans connexion ; non implémentés. Limite connue : certaines pages de commentaires font planter le parseur de `youtube_explode_dart` (FormatException sur le nombre de likes) ; l'app renvoie alors simplement « pas de paroles ».
 - Les paroles ne bloquent plus le démarrage de la lecture ; un morceau démarre même sans accords.
 
 ## Limites connues

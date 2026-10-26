@@ -481,7 +481,10 @@ class _SearchScreenState extends State<SearchScreen> {
                       _RecentSongCard(
                         song: song,
                         isPlaying: widget.controller.currentSong?.id == song.id,
-                        onTap: () => widget.onSongSelected(song),
+                        onTap: () {
+                          widget.controller.setPlaybackQueue(recentSongs);
+                          widget.onSongSelected(song);
+                        },
                         onDelete: () => RecentlyPlayedService.removeSong(song.id),
                       ),
                   ],
@@ -517,7 +520,10 @@ class _SearchScreenState extends State<SearchScreen> {
                   final isPlaying = widget.controller.currentSong?.id == song.id;
                   return SongListItem(
                     song: song,
-                    onTap: () => widget.onSongSelected(song),
+                    onTap: () {
+                      widget.controller.setPlaybackQueue(_results);
+                      widget.onSongSelected(song);
+                    },
                     isPlaying: isPlaying,
                   );
                 },
@@ -532,7 +538,10 @@ class _SearchScreenState extends State<SearchScreen> {
                 final isPlaying = widget.controller.currentSong?.id == song.id;
                 return SongListItem(
                   song: song,
-                  onTap: () => widget.onSongSelected(song),
+                  onTap: () {
+                    widget.controller.setPlaybackQueue(_results);
+                    widget.onSongSelected(song);
+                  },
                   isPlaying: isPlaying,
                 );
               },

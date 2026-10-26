@@ -20,6 +20,7 @@ import '../utils/title_parser.dart';
 import '../services/screen_awake_service.dart';
 import '../services/song_key_estimator.dart';
 import '../services/web_lyrics_service.dart';
+import '../services/youtube_lyrics_service.dart';
 
 /// All possible playback states
 enum PlaybackState {
@@ -45,6 +46,7 @@ class MusicPlayerController extends ChangeNotifier {
   final YoutubeService _youtubeService = YoutubeService();
   final LrcLibService _lyricsService = LrcLibService();
   final WebLyricsService _webLyrics = WebLyricsService();
+  final YoutubeLyricsService _youtubeLyrics = YoutubeLyricsService();
   final StreamChordAnalyzer _streamChordAnalyzer = StreamChordAnalyzer();
   final ScreenAwakeService _screenAwake = ScreenAwakeService();
 
@@ -62,6 +64,34 @@ class MusicPlayerController extends ChangeNotifier {
   // Active song data
   Song? _currentSong;
   int _metadataGeneration = 0;
+  int _completedGeneration = -1;
+  List<Song> _playbackQueue = const [];
+
+  /// Snapshot the displayed suggestions so later searches do not reorder playback.
+  void setPlaybackQueue(List<Song> songs) {
+    final ids = <String>{};
+    _playbackQueue = songs.where((song) => ids.add(song.id)).toList();
+  }
+
+  void _handleCompleted() {
+    final generation = _metadataGeneration;
+    if (_isPreparingPlayback || _completedGeneration == generation) return;
+    _completedGeneration = generation;
+    _currentLyricIndex = -1;
+    _currentChordIndex = -1;
+    _currentLyricController.add(null);
+    _currentChordController.add(null);
+    _updateState(PlaybackState.completed);
+    final index = _playbackQueue.indexWhere((song) => song.id == _currentSong?.id);
+    if (index < 0 || index + 1 >= _playbackQueue.length) return;
+    final next = _playbackQueue[index + 1];
+    // Finish dispatching the old player's event before stopping/reloading it.
+    scheduleMicrotask(() {
+      if (generation == _metadataGeneration && _state == PlaybackState.completed) {
+        unawaited(playSong(next));
+      }
+    });
+  }
   bool _isPreparingPlayback = false;
   Song? get currentSong => _currentSong;
 
@@ -260,11 +290,7 @@ class MusicPlayerController extends ChangeNotifier {
     _playerSubscriptions.add(wp.completedStream.listen((completed) {
       if (_isPreparingPlayback) return;
       if (completed) {
-        _updateState(PlaybackState.completed);
-        _currentLyricIndex = -1;
-        _currentChordIndex = -1;
-        _currentLyricController.add(null);
-        _currentChordController.add(null);
+        _handleCompleted();
       }
     }));
 
@@ -294,11 +320,7 @@ class MusicPlayerController extends ChangeNotifier {
       } else if (processingState == ProcessingState.ready) {
         _updateState(playing ? PlaybackState.playing : PlaybackState.paused);
       } else if (processingState == ProcessingState.completed) {
-        _updateState(PlaybackState.completed);
-        _currentLyricIndex = -1;
-        _currentChordIndex = -1;
-        _currentLyricController.add(null);
-        _currentChordController.add(null);
+        _handleCompleted();
       }
     }));
 
@@ -414,7 +436,8 @@ class MusicPlayerController extends ChangeNotifier {
       // Lyrics never delay playback: LRCLIB is quick, but the web-search
       // fallback can take a while, so they are applied whenever they arrive.
       _isLoadingLyrics = true;
-      unawaited(_loadLyrics(parsed.title, parsed.artist, song.durationSeconds, generation));
+      unawaited(_loadLyrics(parsed.title, parsed.artist, song.durationSeconds, generation,
+          videoId: song.isLocal || song.isAsset ? null : song.id));
       // Chords are prepared before playback so they are in sync from 0:00.
       await _loadChords(song, generation: generation);
       if (generation != _metadataGeneration) return;
@@ -654,21 +677,30 @@ class MusicPlayerController extends ChangeNotifier {
     }
   }
 
-  Future<void> _loadLyrics(String title, String artist, int? durationSeconds, int generation) async {
+  Future<void> _loadLyrics(String title, String artist, int? durationSeconds, int generation,
+      {String? videoId}) async {
     try {
+      bool current() => generation == _metadataGeneration;
       var lyrics = await _lyricsService.fetchSyncedLyrics(
         trackName: title,
         artistName: artist,
         duration: durationSeconds,
       );
-      if (generation != _metadataGeneration) return;
+      if (!current()) return;
       if (lyrics == null || lyrics.isEmpty) {
         // Not on LRCLIB: take the first web search result, even unsynced.
         debugPrint('[MusicPlayerController] LRCLIB has no lyrics, searching the web…');
-        lyrics = await _webLyrics.search(title, artist,
-            isCurrent: () => generation == _metadataGeneration);
+        lyrics = await _webLyrics.search(title, artist, isCurrent: current);
       }
-      if (generation != _metadataGeneration) return;
+      if (!current()) return;
+      if ((lyrics == null || lyrics.isEmpty) && !kIsWeb) {
+        // Deeper search: the YouTube description or a comment often holds
+        // the words when no lyrics site has the song.
+        debugPrint('[MusicPlayerController] No lyrics site has it, reading YouTube description/comments…');
+        lyrics = await _youtubeLyrics.search(
+            videoId: videoId, title: title, artist: artist, isCurrent: current);
+      }
+      if (!current()) return;
       if (lyrics != null && lyrics.isNotEmpty && lyrics.first.isSynced) {
         lyrics = _sortedByTimestamp(lyrics);
       }
@@ -885,6 +917,7 @@ class MusicPlayerController extends ChangeNotifier {
     _audioPlayer?.dispose();
     _youtubeService.dispose();
     _webLyrics.dispose();
+    _youtubeLyrics.dispose();
     _stateController.close();
     _currentLyricController.close();
     _currentChordController.close();

@@ -5,11 +5,14 @@ import 'package:permission_handler/permission_handler.dart';
 import '../models/song.dart';
 import '../services/local_library_service.dart';
 import '../services/browser_audio_file.dart';
+import '../services/audio_folder.dart';
+import '../services/audio_library_filter.dart';
 
 class LibraryScreen extends StatefulWidget {
   final Function(Song) onSongSelected;
+  final ValueChanged<List<Song>>? onQueueChanged;
 
-  const LibraryScreen({super.key, required this.onSongSelected});
+  const LibraryScreen({super.key, required this.onSongSelected, this.onQueueChanged});
 
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
@@ -17,6 +20,30 @@ class LibraryScreen extends StatefulWidget {
 
 class _LibraryScreenState extends State<LibraryScreen> {
   bool _isLoading = false;
+  String _query = '';
+
+  Future<void> _pickFolder() async {
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
+    try {
+      final songs = await pickAudioFolder();
+      if (songs == null) return;
+      await LocalLibraryService.addSongs(songs);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(songs.isEmpty ? 'Aucun fichier audio dans ce dossier.' : '${songs.length} fichiers audio trouvés.'),
+        ));
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Impossible de lire ce dossier : $error'),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   @override
   void initState() {
@@ -98,6 +125,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         child: ValueListenableBuilder<List<Song>>(
           valueListenable: LocalLibraryService.librarySongsNotifier,
           builder: (context, localSongs, _) {
+            final visibleSongs = filterLocalSongs(localSongs, _query);
             return CustomScrollView(
               slivers: [
                 SliverToBoxAdapter(child: _buildHeader(localSongs.length)),
@@ -106,8 +134,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
                     hasScrollBody: false,
                     child: _buildEmptyState(),
                   )
+                else if (visibleSongs.isEmpty)
+                  const SliverToBoxAdapter(child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text('Aucune chanson ne correspond à votre recherche.'),
+                  ))
                 else
-                  _buildListSliver(localSongs),
+                  _buildListSliver(visibleSongs),
               ],
             );
           },
@@ -188,8 +221,27 @@ class _LibraryScreenState extends State<LibraryScreen> {
             ],
           ),
           const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _isLoading ? null : _pickFolder,
+            icon: const Icon(Icons.create_new_folder_outlined),
+            label: const Text('Ajouter un dossier'),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            onChanged: (value) => setState(() => _query = value),
+            decoration: InputDecoration(
+              labelText: 'Rechercher dans mes chansons',
+              hintText: 'Titre ou artiste',
+              prefixIcon: const Icon(Icons.search),
+              helperText: '$count chansons dans la bibliothèque',
+              border: const OutlineInputBorder(),
+            ),
+          ),
           TextButton.icon(
-            onPressed: () => widget.onSongSelected(LocalLibraryService.acousticDemoSong),
+            onPressed: () {
+              widget.onQueueChanged?.call([]);
+              widget.onSongSelected(LocalLibraryService.acousticDemoSong);
+            },
             icon: const Icon(Icons.play_circle_outline),
             label: const Text('Écouter la démonstration'),
           ),
@@ -286,7 +338,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
             final song = songs[index];
             return _LocalSongTile(
               song: song,
-              onTap: () => widget.onSongSelected(song),
+              onTap: () {
+                widget.onQueueChanged?.call(songs);
+                widget.onSongSelected(song);
+              },
               onRemove: () => LocalLibraryService.removeSong(song.id),
             );
           },

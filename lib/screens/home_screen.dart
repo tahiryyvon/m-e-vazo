@@ -40,7 +40,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final screens = [
       SearchScreen(onSongSelected: _onSongSelected, controller: _controller),
       PlayerScreen(controller: _controller),
-      LibraryScreen(onSongSelected: _onSongSelected),
+      LibraryScreen(onSongSelected: _onSongSelected,
+        onQueueChanged: _controller.setPlaybackQueue),
     ];
 
     return PlayerKeyboardControls(

@@ -46,6 +46,60 @@ class PendingAudioPlayer implements AudioPlayer {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('completion advances once, prepares chords, and stops at end of queue', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    SharedPreferences.setMockInitialValues({});
+    final player = PendingAudioPlayer();
+    final controller = MusicPlayerController(audioPlayer: player);
+    addTearDown(controller.dispose);
+    final songs = List.generate(3, (i) => Song.demo(
+      id: 'queue-$i', title: 'Demo $i', artist: 'Test', assetPath: 'demo.mp3',
+    ));
+    controller.setPlaybackQueue(songs);
+    final playback = controller.playSong(songs.first);
+    await player.started.future;
+    player.states.add(PlayerState(false, ProcessingState.ready));
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.currentSong?.id, 'queue-0');
+    player.states.add(PlayerState(true, ProcessingState.completed));
+    player.states.add(PlayerState(true, ProcessingState.completed));
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.currentSong?.id, 'queue-1');
+    expect(controller.currentChord?.chordName, 'G');
+    expect(controller.state, PlaybackState.playing);
+    player.states.add(PlayerState(true, ProcessingState.completed));
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.currentSong?.id, 'queue-2');
+    player.states.add(PlayerState(true, ProcessingState.completed));
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.currentSong?.id, 'queue-2');
+    expect(controller.state, PlaybackState.completed);
+    player.finished.complete();
+    await playback;
+  });
+
+  test('manual choice cancels an automatic transition already scheduled', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    SharedPreferences.setMockInitialValues({});
+    final player = PendingAudioPlayer();
+    final controller = MusicPlayerController(audioPlayer: player);
+    addTearDown(controller.dispose);
+    final songs = List.generate(3, (i) => Song.demo(
+      id: 'choice-$i', title: 'Demo $i', artist: 'Test', assetPath: 'demo.mp3',
+    ));
+    controller.setPlaybackQueue(songs);
+    final first = controller.playSong(songs.first);
+    await player.started.future;
+    player.states.add(PlayerState(true, ProcessingState.completed));
+    final manual = controller.playSong(songs.last);
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.currentSong?.id, 'choice-2');
+    player.finished.complete();
+    await Future.wait([first, manual]);
+  });
+
   test('Android advances chords and lyrics while play is still pending', () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);

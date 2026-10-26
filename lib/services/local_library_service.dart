@@ -48,11 +48,14 @@ class LocalLibraryService {
     await init();
     try {
       final current = List<Song>.from(librarySongsNotifier.value);
+      final paths = current.map((song) => song.localPath).toSet();
+      final additions = <Song>[];
       for (final s in songs) {
-        if (!current.any((existing) => existing.localPath == s.localPath)) {
-          current.insert(0, s);
+        if (paths.add(s.localPath)) {
+          additions.add(s);
         }
       }
+      current.insertAll(0, additions);
 
       librarySongsNotifier.value = current;
       await _persist(current);
