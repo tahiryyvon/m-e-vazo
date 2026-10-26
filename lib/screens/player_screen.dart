@@ -267,6 +267,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   /// Compact portrait mobile layout: Top Chords + Lyrics + Bottom Controls
   Widget _buildMobilePlayer(song) {
+    // Portrait phone: lyrics take half of the screen height, chords scroll
+    // in the remaining space, controls stay compact (hardware volume keys).
+    final screenHeight = MediaQuery.sizeOf(context).height;
     return Column(
       children: [
         _buildAppBar(song),
@@ -276,9 +279,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
             controller: widget.controller,
             currentPosition: _position,
             showChordsHeader: true,
+            lyricsHeight: screenHeight * 0.5,
           ),
         ),
-        _buildPlayerControls(),
+        _buildPlayerControls(compact: true),
       ],
     );
   }
@@ -452,7 +456,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  Widget _buildPlayerControls() {
+  Widget _buildPlayerControls({bool compact = false}) {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
       decoration: BoxDecoration(
@@ -549,7 +553,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               ),
             ],
           ),
-          Row(
+          if (!compact) Row(
             children: [
               IconButton(
                 tooltip: widget.controller.volume == 0

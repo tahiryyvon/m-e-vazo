@@ -33,6 +33,11 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <style>
+    /* Phones: the installed app is already fullscreen (manifest) and the
+       button would cover the player controls. */
+    @media (max-width: 699px) { #fullscreen { display: none; } }
+  </style>
   <button id="fullscreen" type="button" aria-label="Passer en plein écran"
     style="position:fixed;right:12px;bottom:calc(env(safe-area-inset-bottom, 0px) + 84px);z-index:10000;border:1px solid #ff8c00;border-radius:8px;padding:6px 10px;font:12px sans-serif;background:rgba(24,24,24,.85);color:white;cursor:pointer;opacity:.8">
     Plein écran

@@ -14,12 +14,18 @@ class SyncedLyricsChordsView extends StatefulWidget {
   final double lyricFontSize;
   final bool showChordsHeader;
 
+  /// Fixed height for the lyrics area (mobile portrait: half the screen);
+  /// the chords viewer then scrolls in whatever space is left. When null the
+  /// lyrics take all the space not used by the chords viewer.
+  final double? lyricsHeight;
+
   const SyncedLyricsChordsView({
     super.key,
     required this.controller,
     required this.currentPosition,
     this.lyricFontSize = 18,
     this.showChordsHeader = true,
+    this.lyricsHeight,
   });
 
   @override
@@ -98,14 +104,28 @@ class _SyncedLyricsChordsViewState extends State<SyncedLyricsChordsView> {
                 ),
               ),
             // ── Lyrics Section ─────────────────────────────────────
-            Expanded(
-              child: allLyrics != null && allLyrics.isNotEmpty
-                  ? _buildLyricsList(allLyrics, currentLyricIndex)
-                  : _buildLyricsPlaceholder(),
-            ),
+            if (widget.lyricsHeight != null)
+              SizedBox(
+                height: widget.lyricsHeight,
+                child: allLyrics != null && allLyrics.isNotEmpty
+                    ? _buildLyricsList(allLyrics, currentLyricIndex)
+                    : _buildLyricsPlaceholder(),
+              )
+            else
+              Expanded(
+                child: allLyrics != null && allLyrics.isNotEmpty
+                    ? _buildLyricsList(allLyrics, currentLyricIndex)
+                    : _buildLyricsPlaceholder(),
+              ),
 
             // ── Bottom Chords Viewer (Only when showChordsHeader is enabled, e.g. mobile) ────
-            if (widget.showChordsHeader)
+            if (widget.showChordsHeader && widget.lyricsHeight != null)
+              Expanded(
+                child: SingleChildScrollView(
+                  child: _buildBottomChordsViewer(currentChord, nextChord, allLyrics, currentLyricIndex),
+                ),
+              )
+            else if (widget.showChordsHeader)
               _buildBottomChordsViewer(currentChord, nextChord, allLyrics, currentLyricIndex),
           ],
         );
