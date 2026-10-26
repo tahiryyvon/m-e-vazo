@@ -18,6 +18,13 @@
 - Troisième niveau (hors Web) : description puis commentaires de la vidéo YouTube (`YoutubeLyricsService` + `LyricsTextExtractor`). Pour un fichier local, la vidéo est d'abord cherchée sur YouTube. Facebook et les autres réseaux ne sont pas lisibles sans connexion ; non implémentés. Limite connue : certaines pages de commentaires font planter le parseur de `youtube_explode_dart` (FormatException sur le nombre de likes) ; l'app renvoie alors simplement « pas de paroles ».
 - Les paroles ne bloquent plus le démarrage de la lecture ; un morceau démarre même sans accords.
 
+## Ajouts du 26 octobre
+
+- Onglet « Écoute micro » : capture PCM (plugin `record`), accord + note dominante en direct (`LiveChordDetector`, `MicListenerService`, `MicListenScreen`). Sur Windows, copie locale du plugin dans `third_party/record_windows` (CMake 3.20 de VS 2019).
+- Mobile portrait : paroles sur 50 % de la hauteur du lecteur, diagrammes des doigts fixes sous les pastilles (jamais masqués), tonalité/capo dans une bande défilante, contrôles compacts.
+- Android/iOS : le curseur de volume pilote le volume média du système (`volume_controller`) et suit les touches physiques.
+- Paroles : troisième niveau via description et commentaires YouTube.
+
 ## Limites connues
 
 - **Web** : recherche YouTube et repli web des paroles bloqués par CORS dans le navigateur (message affiché, bouton « Rechercher sur le Web » ouvre Google). Pas d'analyse d'accords audio sur Web. Fichiers importés valables uniquement pour la session (URL blob).

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:rxdart/rxdart.dart';
+import 'package:volume_controller/volume_controller.dart';
 import '../models/song.dart';
 import '../models/lyric_line.dart';
 import '../models/chord_event.dart';
@@ -35,6 +36,12 @@ enum PlaybackState {
 
 /// Returns true when running natively on Windows
 bool get _isWindows => !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+
+/// Android / iOS: the app volume is the device media volume.
+bool get _isMobile =>
+    !kIsWeb &&
+    (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS);
 
 /// Central controller for audio playback, lyrics sync, and chord sync
 /// Uses media_kit (libmpv) on Windows, just_audio elsewhere.
@@ -244,6 +251,29 @@ class MusicPlayerController extends ChangeNotifier {
     } else {
       _audioPlayer = audioPlayer ?? AudioPlayer();
       _initJustAudioListeners();
+    }
+    if (_isMobile) _initSystemVolume();
+  }
+
+  // On phones the in-app slider drives the device media volume (the one the
+  // hardware keys change); the player itself stays at full gain.
+  StreamSubscription<double>? _systemVolumeSubscription;
+
+  void _initSystemVolume() {
+    try {
+      VolumeController.instance.showSystemUI = false;
+      _systemVolumeSubscription = VolumeController.instance.addListener((level) {
+        final clamped = level.clamp(0.0, 1.0);
+        if (clamped == _volume) return;
+        _volume = clamped;
+        if (clamped > 0) _volumeBeforeMute = clamped;
+        notifyListeners();
+      }, fetchInitialVolume: true);
+      _systemVolumeSubscription?.onError((Object e) {
+        debugPrint('[MusicPlayerController] System volume listener error: $e');
+      });
+    } catch (e) {
+      debugPrint('[MusicPlayerController] System volume unavailable: $e');
     }
   }
 
@@ -899,7 +929,13 @@ class MusicPlayerController extends ChangeNotifier {
     if (level > 0) _volumeBeforeMute = level;
     _volume = level;
     notifyListeners();
-    if (_isWindows) {
+    if (_isMobile) {
+      try {
+        await VolumeController.instance.setVolume(level);
+      } catch (e) {
+        debugPrint('[MusicPlayerController] System volume error: $e');
+      }
+    } else if (_isWindows) {
       await _windowsPlayer!.setVolume(level);
     } else {
       await _audioPlayer!.setVolume(level);
@@ -913,6 +949,8 @@ class MusicPlayerController extends ChangeNotifier {
     for (final sub in _playerSubscriptions) {
       sub.cancel();
     }
+    _systemVolumeSubscription?.cancel();
+    if (_isMobile) VolumeController.instance.removeListener();
     _windowsPlayer?.dispose();
     _audioPlayer?.dispose();
     _youtubeService.dispose();

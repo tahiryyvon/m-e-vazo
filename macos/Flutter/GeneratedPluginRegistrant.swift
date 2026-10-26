@@ -14,6 +14,7 @@ import record_macos
 import shared_preferences_foundation
 import sqflite_darwin
 import url_launcher_macos
+import volume_controller
 
 func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   AudioDecoderPlugin.register(with: registry.registrar(forPlugin: "AudioDecoderPlugin"))
@@ -25,4 +26,5 @@ func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   SharedPreferencesPlugin.register(with: registry.registrar(forPlugin: "SharedPreferencesPlugin"))
   SqflitePlugin.register(with: registry.registrar(forPlugin: "SqflitePlugin"))
   UrlLauncherPlugin.register(with: registry.registrar(forPlugin: "UrlLauncherPlugin"))
+  VolumeControllerPlugin.register(with: registry.registrar(forPlugin: "VolumeControllerPlugin"))
 }

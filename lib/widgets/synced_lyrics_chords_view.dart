@@ -119,13 +119,22 @@ class _SyncedLyricsChordsViewState extends State<SyncedLyricsChordsView> {
               ),
 
             // ── Bottom Chords Viewer (Only when showChordsHeader is enabled, e.g. mobile) ────
-            if (widget.showChordsHeader && widget.lyricsHeight != null)
+            // Mobile portrait: chips and finger-position diagrams are fixed
+            // (always visible); only key/capo/palette scroll in the leftover.
+            if (widget.showChordsHeader && widget.lyricsHeight != null) ...[
+              _buildBottomChordsViewer(currentChord, nextChord, allLyrics, currentLyricIndex,
+                  includeHarmonicBar: false),
               Expanded(
-                child: SingleChildScrollView(
-                  child: _buildBottomChordsViewer(currentChord, nextChord, allLyrics, currentLyricIndex),
+                child: Container(
+                  width: double.infinity,
+                  color: const Color(0xFF141418).withValues(alpha: 0.95),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+                    child: HarmonicInfoBar(controller: widget.controller),
+                  ),
                 ),
-              )
-            else if (widget.showChordsHeader)
+              ),
+            ] else if (widget.showChordsHeader)
               _buildBottomChordsViewer(currentChord, nextChord, allLyrics, currentLyricIndex),
           ],
         );
@@ -137,8 +146,9 @@ class _SyncedLyricsChordsViewState extends State<SyncedLyricsChordsView> {
     ChordEvent? currentChord,
     ChordEvent? nextChord,
     List<dynamic>? allLyrics,
-    int currentLyricIndex,
-  ) {
+    int currentLyricIndex, {
+    bool includeHarmonicBar = true,
+  }) {
     // Audio time is authoritative; lyric lines must not select active chords.
     final displayChords = <ChordEvent>[
       if (currentChord != null) currentChord,
@@ -171,7 +181,7 @@ class _SyncedLyricsChordsViewState extends State<SyncedLyricsChordsView> {
       ),
       padding: EdgeInsets.symmetric(
         horizontal: 14,
-        vertical: widget.showChordsHeader ? 8 : 10,
+        vertical: widget.showChordsHeader ? 4 : 10,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -221,18 +231,15 @@ class _SyncedLyricsChordsViewState extends State<SyncedLyricsChordsView> {
             ],
           ),
 
-          // In mobile mode with diagrams enabled: display compact diagrams below the chips
-          if (widget.showChordsHeader) ...[
-            const SizedBox(height: 6),
-            HarmonicInfoBar(controller: widget.controller),
-          ],
+          // Mobile: the finger-position diagram comes first, right under the
+          // chips, so it is always visible; key/capo/palette follow below.
           if (widget.showChordsHeader && currentChord != null) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                ChordDiagram(chord: currentChord, size: 75),
+                ChordDiagram(chord: currentChord, size: 66),
                 if (nextChord != null) ...[
                   const SizedBox(width: 20),
                   Column(
@@ -250,13 +257,17 @@ class _SyncedLyricsChordsViewState extends State<SyncedLyricsChordsView> {
                       const SizedBox(height: 2),
                       Opacity(
                         opacity: 0.45,
-                        child: ChordDiagram(chord: nextChord, size: 52),
+                        child: ChordDiagram(chord: nextChord, size: 46),
                       ),
                     ],
                   ),
                 ],
               ],
             ),
+          ],
+          if (widget.showChordsHeader && includeHarmonicBar) ...[
+            const SizedBox(height: 6),
+            HarmonicInfoBar(controller: widget.controller),
           ],
         ],
       ),

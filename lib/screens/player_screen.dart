@@ -80,7 +80,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         constraints.maxWidth > constraints.maxHeight;
                     return isLandscape
                         ? _buildLandscapePlayer(song, constraints)
-                        : _buildMobilePlayer(song);
+                        : _buildMobilePlayer(song, constraints);
                   },
                 ),
               ),
@@ -266,10 +266,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   /// Compact portrait mobile layout: Top Chords + Lyrics + Bottom Controls
-  Widget _buildMobilePlayer(song) {
-    // Portrait phone: lyrics take half of the screen height, chords scroll
-    // in the remaining space, controls stay compact (hardware volume keys).
-    final screenHeight = MediaQuery.sizeOf(context).height;
+  Widget _buildMobilePlayer(song, BoxConstraints constraints) {
+    // Portrait phone: lyrics take half of the player height (screen minus
+    // navigation bar), the finger-position diagrams stay fixed below them,
+    // key/capo scroll in the leftover, controls stay compact.
+    final screenHeight = constraints.maxHeight;
     return Column(
       children: [
         _buildAppBar(song),
@@ -458,7 +459,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Widget _buildPlayerControls({bool compact = false}) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      padding: EdgeInsets.fromLTRB(16, compact ? 0 : 4, 16, compact ? 6 : 12),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(16),
@@ -475,7 +476,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  SliderTheme(
+                  SizedBox(
+                    height: compact ? 28 : 48,
+                    child: SliderTheme(
                     data: SliderTheme.of(context).copyWith(
                       trackHeight: 3,
                       thumbShape:
@@ -496,6 +499,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         }
                       },
                     ),
+                  ),
                   ),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -553,7 +557,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
               ),
             ],
           ),
-          if (!compact) Row(
+          // On phones this slider is the device media volume (see controller).
+          SizedBox(
+            height: compact ? 30 : 48,
+            child: Row(
             children: [
               IconButton(
                 tooltip: widget.controller.volume == 0
@@ -576,7 +583,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   onChanged: widget.controller.setVolume,
                 ),
               ),
-              SizedBox(
+              if (!compact) SizedBox(
                 width: 44,
                 child: Text(
                   '${(widget.controller.volume * 100).round()} %',
@@ -585,6 +592,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
               ),
             ],
+          ),
           ),
         ],
       ),
