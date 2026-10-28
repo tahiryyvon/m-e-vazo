@@ -6,6 +6,7 @@ import '../widgets/synced_lyrics_chords_view.dart';
 import '../widgets/chord_diagram.dart';
 import '../widgets/harmonic_info_bar.dart';
 import '../widgets/mobile_chord_panel.dart';
+import '../widgets/metronome_controls.dart';
 
 class PlayerScreen extends StatefulWidget {
   final MusicPlayerController controller;
@@ -575,15 +576,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
             child: Row(
             children: [
               IconButton(
-                tooltip: widget.controller.volume == 0
-                    ? 'Rétablir le son (M)'
-                    : 'Couper le son (M)',
+                tooltip: widget.controller.songMuted
+                    ? 'Rétablir le son de la chanson (M)'
+                    : 'Couper la chanson, garder le métronome (M)',
                 onPressed: widget.controller.toggleMute,
+                visualDensity: VisualDensity.compact,
                 icon: Icon(
-                  widget.controller.volume == 0
+                  widget.controller.songMuted
                       ? Icons.volume_off_rounded
                       : Icons.volume_up_rounded,
-                  color: Colors.white70,
+                  color: widget.controller.songMuted ? const Color(0xFFFF8C00) : Colors.white70,
                 ),
               ),
               Expanded(
@@ -603,6 +605,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   style: const TextStyle(color: Colors.white70, fontSize: 11),
                 ),
               ),
+              MetronomeControls(metronome: widget.controller.metronome),
             ],
           ),
           ),

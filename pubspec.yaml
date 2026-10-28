@@ -54,6 +54,7 @@ dependencies:
   permission_handler: ^11.3.1
   record: ^6.2.1
   volume_controller: ^3.5.0
+  audioplayers: ^6.7.1
 
 # Visual Studio 2019 ships CMake 3.20; see third_party/record_windows/WHY.md
 dependency_overrides:

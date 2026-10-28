@@ -63,6 +63,9 @@ class PlayerKeyboardControls extends StatelessWidget {
       action = controller.toggleMute;
     } else if (key == LogicalKeyboardKey.home) {
       action = () => controller.seek(Duration.zero);
+    } else if (key == LogicalKeyboardKey.keyT) {
+      if (event is KeyRepeatEvent) return KeyEventResult.handled;
+      action = () async => controller.metronome.toggle();
     }
     if (action == null) return KeyEventResult.ignored;
     unawaited(action());

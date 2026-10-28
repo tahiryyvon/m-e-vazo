@@ -8,6 +8,7 @@ import 'songsterr_service.dart';
 import 'wav_pcm_decoder.dart';
 import 'chord_timeline_filter.dart';
 import 'chordino_service.dart';
+import 'tempo_estimator.dart';
 
 /// FFT radix-2 iterative, en place. Necessite une taille puissance de 2.
 class _Fft {
@@ -173,10 +174,13 @@ class AudioChordDetectorService {
     final bytes = await file.readAsBytes();
     final wav = WavPcmDecoder.decode(bytes);
     if (wav == null) return null;
-    if (Platform.isWindows) {
-      return ChordinoService.analyzeWav(path, wav.samples.length / wav.sampleRate);
-    }
-    return analyzePcm(wav.samples, wav.sampleRate);
+    final result = Platform.isWindows
+        ? await ChordinoService.analyzeWav(path, wav.samples.length / wav.sampleRate)
+        : analyzePcm(wav.samples, wav.sampleRate);
+    // Same decoded audio, same time origin as the chords: the metronome
+    // clicks on the song's own beats.
+    final tempo = TempoEstimator.estimate(wav.samples, wav.sampleRate);
+    return result.withTempo(tempo?.bpm, tempo?.firstBeat);
   }
 
   /// Fondamentale dominante d'un court extrait PCM mono (ecoute micro,

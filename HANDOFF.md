@@ -46,6 +46,16 @@
 - Limite : la durée réduit l'ambiguïté mais ne la supprime pas toujours (versions de durées proches). Les tags M4A/FLAC ne sont pas encore lus.
 - Prochaine étape prévue : empreinte audio AcoustID, dès que la clé API sera fournie.
 
+## Métronome et muet chanson (28 octobre)
+
+- Tempo détecté avec les accords, sur le même audio décodé (`TempoEstimator` : attaques, autocorrélation 50–220 BPM, recherche conjointe tempo + premier temps). Mesuré sur signaux de test : tempo à 0,05 BPM près, premier temps à moins de 10 ms.
+- `Metronome` : désactivé par défaut, cale ses clics sur la position de lecture de la chanson (suit pause, retour, avance), accent sur le premier temps de chaque mesure de 4. Sons via `audioplayers` en mode basse latence, sans prendre le focus audio. Réglages : ÷2, −1, +1, ×2, retour au tempo détecté, volume propre. Touche T.
+- Le bouton haut-parleur (et la touche M) coupe seulement la chanson (gain du lecteur à 0) : métronome, paroles et accords continuent. Sur mobile, le curseur reste le volume de l'appareil (chanson et métronome).
+- Web : pas d'analyse audio, donc tempo manuel (120 BPM par défaut, réglable).
+- Diagrammes d'accords à hauteur fixe : un accord barré (ligne « Barré · case N ») ne change plus la taille du panneau.
+- À vérifier sur appareil : latence réelle des clics (pas de compensation de latence de sortie), en particulier sur Windows et Web.
+- Erreur préexistante sur Web : au démarrage, un plugin appelle un canal natif absent (« No implementation found »), déjà présent avant le métronome. Non bloquant, à identifier.
+
 ## Limites connues
 
 - **Web** : recherche YouTube et repli web des paroles bloqués par CORS dans le navigateur (message affiché, bouton « Rechercher sur le Web » ouvre Google). Pas d'analyse d'accords audio sur Web. Fichiers importés valables uniquement pour la session (URL blob).

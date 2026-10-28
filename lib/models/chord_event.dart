@@ -36,11 +36,28 @@ class SongChordsResult {
   final String? tuning;
   final String? analysisMethod;
 
+  /// Detected tempo (beats per minute) and the time of the first beat, used
+  /// by the metronome. Null when the audio has no clear pulse.
+  final double? bpm;
+  final Duration? firstBeat;
+
   SongChordsResult({
     required this.chords,
     this.musicalKey,
     this.capo,
     this.tuning,
     this.analysisMethod,
+    this.bpm,
+    this.firstBeat,
   });
+
+  SongChordsResult withTempo(double? bpm, Duration? firstBeat) => SongChordsResult(
+        chords: chords,
+        musicalKey: musicalKey,
+        capo: capo,
+        tuning: tuning,
+        analysisMethod: analysisMethod,
+        bpm: bpm,
+        firstBeat: firstBeat,
+      );
 }

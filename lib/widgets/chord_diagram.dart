@@ -15,18 +15,33 @@ class ChordDiagram extends StatelessWidget {
     this.size = 120,
   });
 
+  // Every line has a reserved height, so a barre chord (extra "Barré ·
+  // case N" line), a plain chord and the empty state all occupy exactly the
+  // same box: the panel never resizes when the chord changes.
+  double get _nameHeight => size * 0.22 * 1.3;
+  static const double _gap = 6;
+  double get _barreHeight => size * 0.09 * 1.45;
+  double get _boardHeight => size * 1.1;
+
+  /// Total height of the widget, identical for every chord.
+  double get totalHeight => _nameHeight + _gap + _barreHeight + _boardHeight;
+
   @override
   Widget build(BuildContext context) {
-    return chord == null
+    return SizedBox(
+      width: size,
+      height: totalHeight,
+      child: chord == null
           ? _buildPlaceholder(key: const ValueKey('placeholder'))
-          : _buildDiagram(chord!, key: ValueKey(chord!.chordName));
+          : _buildDiagram(chord!, key: ValueKey(chord!.chordName)),
+    );
   }
 
   Widget _buildPlaceholder({Key? key}) {
     return SizedBox(
       key: key,
       width: size,
-      height: size * 1.4,
+      height: totalHeight,
       child: Center(
         child: Text(
           '—',
@@ -45,25 +60,43 @@ class ChordDiagram extends StatelessWidget {
       key: key,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Chord name
-        Text(
-          chord.chordName,
-          style: TextStyle(
-            fontSize: size * 0.22,
-            fontWeight: FontWeight.w800,
-            color: const Color(0xFFFF8C00),
-            letterSpacing: 0.5,
+        // Chord name (long names shrink instead of wrapping)
+        SizedBox(
+          height: _nameHeight,
+          width: size,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              chord.chordName,
+              maxLines: 1,
+              style: TextStyle(
+                fontSize: size * 0.22,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFFFF8C00),
+                letterSpacing: 0.5,
+              ),
+            ),
           ),
         ),
-        const SizedBox(height: 6),
-        if (barre != null)
-          Text('Barré · case ${barre.fret}',
-              style: TextStyle(fontSize: size * 0.09, color: Colors.amberAccent)),
+        const SizedBox(height: _gap),
+        // Barre line: always reserved, empty for open chords.
+        SizedBox(
+          height: _barreHeight,
+          width: size,
+          child: barre == null
+              ? null
+              : FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('Barré · case ${barre.fret}',
+                      maxLines: 1,
+                      style: TextStyle(fontSize: size * 0.09, color: Colors.amberAccent)),
+                ),
+        ),
 
         // Fretboard diagram
         Container(
           width: size,
-          height: size * 1.1,
+          height: _boardHeight,
           padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
           decoration: BoxDecoration(
             color: const Color(0xFF1C1C1C),

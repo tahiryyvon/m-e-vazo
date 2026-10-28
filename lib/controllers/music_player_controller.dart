@@ -23,6 +23,7 @@ import '../services/song_key_estimator.dart';
 import '../services/web_lyrics_service.dart';
 import '../services/youtube_lyrics_service.dart';
 import '../services/local_track_metadata.dart';
+import '../services/metronome.dart';
 
 /// All possible playback states
 enum PlaybackState {
@@ -64,11 +65,39 @@ class MusicPlayerController extends ChangeNotifier {
   PlaybackState get state => _state;
 
   double _volume = 1.0;
-  double _volumeBeforeMute = 1.0;
   double get volume => _volume;
 
-  Future<void> toggleMute() =>
-      setVolume(_volume == 0 ? _volumeBeforeMute : 0);
+  /// Mutes the SONG only: its player gain goes to 0 while playback (and so
+  /// the lyrics, chords and metronome) keeps running. The device / master
+  /// volume is untouched, so the metronome stays audible.
+  bool _songMuted = false;
+  bool get songMuted => _songMuted;
+
+  Future<void> toggleMute() => setSongMuted(!_songMuted);
+
+  Future<void> setSongMuted(bool muted) async {
+    _songMuted = muted;
+    notifyListeners();
+    await _applySongGain();
+  }
+
+  /// Song player gain: 0 when muted. On phones the slider drives the system
+  /// volume, so the player itself stays at full gain.
+  Future<void> _applySongGain() async {
+    final gain = _songMuted ? 0.0 : (_isMobile ? 1.0 : _volume);
+    try {
+      if (_isWindows) {
+        await _windowsPlayer?.setVolume(gain);
+      } else {
+        await _audioPlayer?.setVolume(gain);
+      }
+    } catch (e) {
+      debugPrint('[MusicPlayerController] Song gain error: $e');
+    }
+  }
+
+  /// Song-locked metronome, independent of the song's gain. Off by default.
+  final Metronome metronome = Metronome();
 
   // Active song data
   Song? _currentSong;
@@ -268,7 +297,6 @@ class MusicPlayerController extends ChangeNotifier {
         final clamped = level.clamp(0.0, 1.0);
         if (clamped == _volume) return;
         _volume = clamped;
-        if (clamped > 0) _volumeBeforeMute = clamped;
         notifyListeners();
       }, fetchInitialVolume: true);
       _systemVolumeSubscription?.onError((Object e) {
@@ -306,6 +334,7 @@ class MusicPlayerController extends ChangeNotifier {
       }
       _syncLyrics(position);
       _syncChords(position);
+      metronome.onPosition(position);
     }));
 
     // Buffering → show buffering state
@@ -366,6 +395,7 @@ class MusicPlayerController extends ChangeNotifier {
       }
       _syncLyrics(position);
       _syncChords(position);
+      metronome.onPosition(position);
     }));
 
     // Error handling
@@ -380,6 +410,7 @@ class MusicPlayerController extends ChangeNotifier {
   }
 
   void _updateState(PlaybackState newState) {
+    metronome.onPlaying(newState == PlaybackState.playing);
     unawaited(_screenAwake.setEnabled(
       newState == PlaybackState.playing ||
           (newState == PlaybackState.buffering && _screenAwake.enabled),
@@ -402,6 +433,8 @@ class MusicPlayerController extends ChangeNotifier {
       _chords = null;
       _concertChords = null;
       _chordStatus = 'Préparation des accords avant lecture…';
+      metronome.setSongTempo(null, null);
+      metronome.onSeek(Duration.zero);
       _musicalKey = null;
       _capo = _selectedCapos[song.id];
       _tuning = null;
@@ -427,6 +460,8 @@ class MusicPlayerController extends ChangeNotifier {
       // 1. Check if song is an embedded asset track (e.g. acoustic guitar demo)
       if (song.isAsset) {
         _chordStatus = 'Accords de démonstration';
+        // Demo: 80 BPM, a chord every two bars (6 s), first beat at 0.
+        metronome.setSongTempo(80, Duration.zero);
         _musicalKey = 'G';
         _tuning = 'Standard (E A D G B E)';
         _capo = null;
@@ -807,6 +842,7 @@ class MusicPlayerController extends ChangeNotifier {
 
       if (generation != _metadataGeneration) return;
       _concertChords = result?.chords;
+      metronome.setSongTempo(result?.bpm, result?.firstBeat);
       _chords = _concertChords?.map((c) => CapoChords.shape(c, _capo ?? 0)).toList();
       _musicalKey = SongKeyEstimator.estimate(_concertChords ?? []);
       _tuning = result?.tuning;
@@ -932,6 +968,7 @@ class MusicPlayerController extends ChangeNotifier {
     }
     _syncLyrics(position);
     _syncChords(position);
+    metronome.onSeek(position);
   }
 
   Future<void> seekForward() async {
@@ -948,19 +985,17 @@ class MusicPlayerController extends ChangeNotifier {
   Future<void> setVolume(double volume) async {
     if (!volume.isFinite) return;
     final level = volume.clamp(0.0, 1.0);
-    if (level > 0) _volumeBeforeMute = level;
     _volume = level;
     notifyListeners();
     if (_isMobile) {
+      // Master (device) volume: affects song and metronome alike.
       try {
         await VolumeController.instance.setVolume(level);
       } catch (e) {
         debugPrint('[MusicPlayerController] System volume error: $e');
       }
-    } else if (_isWindows) {
-      await _windowsPlayer!.setVolume(level);
     } else {
-      await _audioPlayer!.setVolume(level);
+      await _applySongGain();
     }
   }
 
@@ -975,6 +1010,7 @@ class MusicPlayerController extends ChangeNotifier {
     if (_isMobile) VolumeController.instance.removeListener();
     _windowsPlayer?.dispose();
     _audioPlayer?.dispose();
+    metronome.dispose();
     _youtubeService.dispose();
     _webLyrics.dispose();
     _youtubeLyrics.dispose();
