@@ -42,7 +42,9 @@
 - LRCLIB reste la première source pour tous les morceaux. Pour un fichier local, la recherche échouait toujours (artiste « Unknown Artist », pas de durée) et l'app passait directement aux sites web.
 - Les tags ID3 (titre, artiste, durée) des MP3 sont lus avant la recherche (`AudioTagReader`). Les noms de fichiers sont nettoyés (numéros de piste, tirets bas, tirets longs).
 - Sans artiste, LRCLIB cherche par titre seul et retient l'artiste majoritaire ; une durée connue filtre à ±5 s.
-- Limite : un titre ambigu sans artiste peut tomber sur une autre version (ex. « La Vie en rose » en anglais). Les tags M4A/FLAC ne sont pas encore lus.
+- Durée réelle transmise à LRCLIB (`LocalTrackMetadata`) : lue dans l'en-tête du fichier via `audio_decoder.getAudioInfo` sur Android/Windows, ou en relisant l'URL blob du morceau joué sur Web. Elle prime sur la durée déclarée dans les tags. Échec ou délai dépassé (8 s) : simple « durée inconnue ».
+- Limite : la durée réduit l'ambiguïté mais ne la supprime pas toujours (versions de durées proches). Les tags M4A/FLAC ne sont pas encore lus.
+- Prochaine étape prévue : empreinte audio AcoustID, dès que la clé API sera fournie.
 
 ## Limites connues
 

@@ -22,7 +22,7 @@ import '../services/screen_awake_service.dart';
 import '../services/song_key_estimator.dart';
 import '../services/web_lyrics_service.dart';
 import '../services/youtube_lyrics_service.dart';
-import '../services/audio_tags.dart';
+import '../services/local_track_metadata.dart';
 
 /// All possible playback states
 enum PlaybackState {
@@ -55,6 +55,7 @@ class MusicPlayerController extends ChangeNotifier {
   final LrcLibService _lyricsService = LrcLibService();
   final WebLyricsService _webLyrics = WebLyricsService();
   final YoutubeLyricsService _youtubeLyrics = YoutubeLyricsService();
+  final LocalTrackMetadata _localMetadata = LocalTrackMetadata();
   final StreamChordAnalyzer _streamChordAnalyzer = StreamChordAnalyzer();
   final ScreenAwakeService _screenAwake = ScreenAwakeService();
 
@@ -471,18 +472,18 @@ class MusicPlayerController extends ChangeNotifier {
         var title = parsed.title;
         var artist = parsed.artist;
         var duration = song.durationSeconds;
-        // Local files: the embedded tags give LRCLIB the real title, artist
-        // and duration; the file name is only a fallback guess.
+        // Local files: embedded tags give the real title and artist, and the
+        // audio container gives the real duration, so LRCLIB can tell apart
+        // versions of the same title. The file name is only a fallback guess.
         final path = song.localPath;
-        if (song.isLocal && !kIsWeb && path != null && !path.startsWith('content://')) {
-          final tags = await AudioTagReader.read(path);
-          if (tags != null) {
-            if (tags.title != null) title = tags.title!;
-            if (tags.artist != null) artist = tags.artist!;
-            duration ??= tags.durationSeconds;
-            debugPrint('[MusicPlayerController] Local tags: "$artist" - "$title"'
-                '${duration != null ? ' (${duration}s)' : ''}');
-          }
+        if (song.isLocal && path != null) {
+          final info = await _localMetadata.resolve(
+              path: path, title: title, artist: artist, knownDuration: duration);
+          title = info.title;
+          artist = info.artist;
+          duration = info.durationSeconds;
+          debugPrint('[MusicPlayerController] Local track: "$artist" - "$title"'
+              '${duration != null ? ' (${duration}s)' : ' (duration unknown)'}');
         }
         await _loadLyrics(title, artist, duration, generation,
             videoId: song.isLocal || song.isAsset ? null : song.id);
