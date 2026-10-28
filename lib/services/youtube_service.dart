@@ -142,7 +142,32 @@ class YoutubeService {
   }
 
   // Fast stream URL cache to make re-plays instantaneous
-  final Map<String, String> _streamCache = {};
+  // Stream URLs expire after a few hours: keep them briefly and bounded.
+  final Map<String, (String, DateTime)> _streamCache = {};
+  static const _streamUrlTtl = Duration(hours: 2);
+  static const _maxCachedUrls = 64;
+  static const _maxTempFiles = 5;
+  static final _videoIdPattern = RegExp(r'^[a-zA-Z0-9_-]{11}$');
+
+  /// Video IDs end up in file names and URLs: accept only YouTube's format.
+  static bool isValidVideoId(String id) => _videoIdPattern.hasMatch(id);
+
+  void _rememberUrl(String videoId, String url) {
+    if (_streamCache.length >= _maxCachedUrls) {
+      _streamCache.remove(_streamCache.keys.first);
+    }
+    _streamCache[videoId] = (url, DateTime.now());
+  }
+
+  String? _cachedUrl(String videoId) {
+    final entry = _streamCache[videoId];
+    if (entry == null) return null;
+    if (DateTime.now().difference(entry.$2) > _streamUrlTtl) {
+      _streamCache.remove(videoId);
+      return null;
+    }
+    return entry.$1;
+  }
 
   // Cache of downloaded temp files per videoId
   final Map<String, File> _tempFileCache = {};
@@ -218,7 +243,7 @@ class YoutubeService {
   /// Returns the [File] on success, null on failure.
   /// Uses a cache so the same song is only downloaded once per session.
   Future<File?> downloadToTempFile(String videoId) async {
-    if (_isDisposed) return null;
+    if (_isDisposed || !isValidVideoId(videoId)) return null;
 
     // Return cached file if still on disk
     if (_tempFileCache.containsKey(videoId)) {
@@ -285,6 +310,11 @@ class YoutubeService {
       final sizeMb = (tmpFile.lengthSync() / 1024 / 1024).toStringAsFixed(1);
       _log('Download complete: ${tmpFile.path} ($sizeMb MB)');
       _tempFileCache[videoId] = tmpFile;
+      // Keep only the most recent downloads on disk (each is several MB).
+      while (_tempFileCache.length > _maxTempFiles) {
+        final oldest = _tempFileCache.keys.first;
+        try { _tempFileCache.remove(oldest)?.deleteSync(); } catch (_) {}
+      }
       return tmpFile;
     } catch (e, st) {
       _log('Download error for $videoId: $e\n$st');
@@ -298,8 +328,9 @@ class YoutubeService {
   /// Resolves the direct audio stream URL for a YouTube video:
   /// Uses official mobile API clients (iOS & Android) to prevent YouTube bot blocking/400 errors.
   Future<String?> getAudioStreamUrl(String videoId) async {
-    if (_isDisposed) return null;
-    if (_streamCache.containsKey(videoId)) return _streamCache[videoId];
+    if (_isDisposed || !isValidVideoId(videoId)) return null;
+    final cached = _cachedUrl(videoId);
+    if (cached != null) return cached;
 
     // Attempt 1: Standard YouTube manifest (fast, direct, and compatible without 403)
     try {
@@ -318,7 +349,7 @@ class YoutubeService {
               a.bitrate.bitsPerSecond > b.bitrate.bitsPerSecond ? a : b);
           final url = best.url.toString();
           _log('Using standard MP4/AAC audio stream (${best.bitrate.kiloBitsPerSecond.toStringAsFixed(0)} kbps)');
-          _streamCache[videoId] = url;
+          _rememberUrl(videoId, url);
           return url;
         }
 
@@ -326,7 +357,7 @@ class YoutubeService {
         final best = audioOnly.withHighestBitrate();
         final url = best.url.toString();
         _log('Using standard audio stream (${best.bitrate.kiloBitsPerSecond.toStringAsFixed(0)} kbps)');
-        _streamCache[videoId] = url;
+        _rememberUrl(videoId, url);
         return url;
       }
 
@@ -336,7 +367,7 @@ class YoutubeService {
         final best = muxed.withHighestBitrate();
         final url = best.url.toString();
         _log('Fallback: using standard muxed stream (${best.bitrate.kiloBitsPerSecond.toStringAsFixed(0)} kbps)');
-        _streamCache[videoId] = url;
+        _rememberUrl(videoId, url);
         return url;
       }
     } catch (e) {
@@ -361,13 +392,13 @@ class YoutubeService {
               a.bitrate.bitsPerSecond > b.bitrate.bitsPerSecond ? a : b);
           final url = best.url.toString();
           _log('Fallback: using Android MP4 stream (${best.bitrate.kiloBitsPerSecond.toStringAsFixed(0)} kbps)');
-          _streamCache[videoId] = url;
+          _rememberUrl(videoId, url);
           return url;
         }
 
         final best = audioOnly.withHighestBitrate();
         final url = best.url.toString();
-        _streamCache[videoId] = url;
+        _rememberUrl(videoId, url);
         return url;
       }
     } catch (e) {

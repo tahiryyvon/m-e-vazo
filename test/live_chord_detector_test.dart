@@ -49,4 +49,16 @@ void main() {
     expect(d.chord, isNull);
     expect(d.note, isNull);
   });
+
+  test('odd-sized microphone chunks keep samples aligned', () {
+    final data = pcm16([196.0, 246.94, 293.66]);
+    final aligned = LiveChordDetector(sampleRate: 44100)..feedPcm16(data);
+    final split = LiveChordDetector(sampleRate: 44100);
+    // 4095-byte chunks: every chunk boundary cuts a 16-bit sample in half.
+    for (var i = 0; i < data.length; i += 4095) {
+      split.feedPcm16(Uint8List.sublistView(data, i, math.min(i + 4095, data.length)));
+    }
+    expect(split.snapshot(), aligned.snapshot());
+    expect(split.analyze().chord, 'G');
+  });
 }

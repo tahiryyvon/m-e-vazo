@@ -5,6 +5,7 @@ import '../controllers/music_player_controller.dart';
 import '../widgets/synced_lyrics_chords_view.dart';
 import '../widgets/chord_diagram.dart';
 import '../widgets/harmonic_info_bar.dart';
+import '../widgets/mobile_chord_panel.dart';
 
 class PlayerScreen extends StatefulWidget {
   final MusicPlayerController controller;
@@ -76,7 +77,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final isLandscape =
-                        constraints.maxWidth >= 700 &&
+                        constraints.maxWidth >= 900 && constraints.maxHeight >= 550 &&
                         constraints.maxWidth > constraints.maxHeight;
                     return isLandscape
                         ? _buildLandscapePlayer(song, constraints)
@@ -267,10 +268,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   /// Compact portrait mobile layout: Top Chords + Lyrics + Bottom Controls
   Widget _buildMobilePlayer(song, BoxConstraints constraints) {
-    // Portrait phone: lyrics take half of the player height (screen minus
-    // navigation bar), the finger-position diagrams stay fixed below them,
-    // key/capo scroll in the leftover, controls stay compact.
-    final screenHeight = constraints.maxHeight;
+    // Reserve the playing reference first; lyrics use the remaining space.
+    if (constraints.maxWidth > constraints.maxHeight) {
+      return Row(children: [
+        SizedBox(width: constraints.maxWidth * 0.46,
+          child: Center(child: MobileChordPanel(controller: widget.controller))),
+        Expanded(child: Column(children: [
+          _buildAppBar(song),
+          Expanded(child: SyncedLyricsChordsView(
+            controller: widget.controller, currentPosition: _position,
+            showChordsHeader: false,
+          )),
+          _buildPlayerControls(compact: true),
+        ])),
+      ]);
+    }
     return Column(
       children: [
         _buildAppBar(song),
@@ -279,10 +291,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
           child: SyncedLyricsChordsView(
             controller: widget.controller,
             currentPosition: _position,
-            showChordsHeader: true,
-            lyricsHeight: screenHeight * 0.5,
+            showChordsHeader: false,
           ),
         ),
+        MobileChordPanel(controller: widget.controller),
         _buildPlayerControls(compact: true),
       ],
     );

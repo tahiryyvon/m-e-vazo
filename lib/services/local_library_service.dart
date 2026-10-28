@@ -5,6 +5,7 @@ import '../models/song.dart';
 
 class LocalLibraryService {
   static Future<void>? _initialization;
+  static Future<void> _writes = Future.value();
   static const _storageKey = 'me_vazo_local_library_songs';
   static final ValueNotifier<List<Song>> librarySongsNotifier = ValueNotifier<List<Song>>([]);
 
@@ -66,6 +67,7 @@ class LocalLibraryService {
 
   /// Removes a song from the library
   static Future<void> removeSong(String songId) async {
+    await init();
     try {
       final current = List<Song>.from(librarySongsNotifier.value);
       current.removeWhere((s) => s.id == songId);
@@ -76,7 +78,14 @@ class LocalLibraryService {
     }
   }
 
-  static Future<void> _persist(List<Song> songs) async {
+  static Future<void> _persist(List<Song> songs) {
+    final snapshot = List<Song>.of(songs);
+    final write = _writes.then((_) => _writeSnapshot(snapshot));
+    _writes = write.catchError((Object _) {});
+    return write;
+  }
+
+  static Future<void> _writeSnapshot(List<Song> songs) async {
     final prefs = await SharedPreferences.getInstance();
     final jsonList = songs.where((s) => !s.isSessionOnly)
         .map((s) => jsonEncode(s.toJson())).toList();

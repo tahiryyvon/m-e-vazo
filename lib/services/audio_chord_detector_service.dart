@@ -167,6 +167,9 @@ class AudioChordDetectorService {
   static Future<SongChordsResult?> _analyzeWavFile(String path) async {
     final file = File(path);
     if (!await file.exists()) return null;
+    // PCM expands substantially during decoding and spectral analysis.
+    // Decline oversized tracks before allocating their complete byte buffer.
+    if (await file.length() > 256 * 1024 * 1024) return null;
     final bytes = await file.readAsBytes();
     final wav = WavPcmDecoder.decode(bytes);
     if (wav == null) return null;

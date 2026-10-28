@@ -1,9 +1,11 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:html/parser.dart' as html;
 import 'package:html/dom.dart';
 import 'package:http/http.dart' as http;
 import '../models/lyric_line.dart';
+import 'public_web_client.dart';
 
 /// Best-effort public-page lookup used when LRCLIB has nothing.
 ///
@@ -18,7 +20,7 @@ import '../models/lyric_line.dart';
 /// No CAPTCHA, login, consent or paywall bypass: a refusal yields null.
 class WebLyricsService {
   final http.Client _client;
-  WebLyricsService({http.Client? client}) : _client = client ?? http.Client();
+  WebLyricsService({http.Client? client}) : _client = client ?? createPublicWebClient();
   void dispose() => _client.close();
 
   static const Duration _requestTimeout = Duration(seconds: 6);
@@ -60,15 +62,32 @@ class WebLyricsService {
   Future<String?> _get(Uri uri) async {
     if (_deadHosts.contains(uri.host)) return null;
     try {
-      final response = await _client.get(uri, headers: {
+      // Redirects are safe to follow: every hop opens a new connection through
+      // the public client's factory, which re-checks HTTPS and public IPs.
+      final request = http.Request('GET', uri)
+        ..followRedirects = true
+        ..maxRedirects = 3;
+      request.headers.addAll({
         'User-Agent': _userAgent,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
-      }).timeout(_requestTimeout);
-      if (response.statusCode != 200 || response.bodyBytes.length > _maxBodyBytes) {
+      });
+      final response = await _client.send(request).timeout(_requestTimeout);
+      if (response.statusCode != 200 || (response.contentLength ?? 0) > _maxBodyBytes) {
+        // Drain by cancelling, not buffering a rejected or redirected page.
+        await response.stream.listen((_) {}).cancel();
         return null;
       }
-      return _decodeBody(response);
+      final bytes = BytesBuilder(copy: false);
+      final elapsed = Stopwatch()..start();
+      await for (final chunk in response.stream.timeout(_requestTimeout)) {
+        if (bytes.length + chunk.length > _maxBodyBytes || elapsed.elapsed > _requestTimeout) {
+          return null;
+        }
+        bytes.add(chunk);
+      }
+      return _decodeBody(http.Response.bytes(bytes.takeBytes(), response.statusCode,
+          headers: response.headers));
     } catch (e) {
       debugPrint('[WebLyricsService] GET ${uri.host} failed: $e');
       _deadHosts.add(uri.host);

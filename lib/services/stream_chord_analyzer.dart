@@ -6,10 +6,12 @@ import 'audio_chord_detector_service.dart';
 /// Analyze the same stream as playback, preserving its audio time origin.
 /// Never publish a timeline from a truncated download.
 class StreamChordAnalyzer {
+  final int maxDownloadBytes;
   final http.Client Function() createClient;
   final Future<SongChordsResult?> Function(String) analyzeFile;
 
   StreamChordAnalyzer({
+    this.maxDownloadBytes = 256 * 1024 * 1024,
     http.Client Function()? createClient,
     Future<SongChordsResult?> Function(String)? analyzeFile,
   })  : createClient = createClient ?? http.Client.new,
@@ -40,6 +42,9 @@ class StreamChordAnalyzer {
         }
         expectedBytes = int.parse(match[2]!);
       }
+      if (expectedBytes != null && expectedBytes > maxDownloadBytes) {
+        throw StateError('Audio exceeds analysis download limit');
+      }
       directory = await Directory.systemTemp.createTemp('stream_chords_');
       final extension =
           (response.headers['content-type'] ?? '').contains('webm')
@@ -52,7 +57,12 @@ class StreamChordAnalyzer {
           in response.stream.timeout(const Duration(seconds: 30))) {
         if (!isCurrent()) return null;
         receivedBytes += chunk.length;
+        if (receivedBytes > maxDownloadBytes) {
+          throw StateError('Audio exceeds analysis download limit');
+        }
         sink.add(chunk);
+        // Bound queued disk writes instead of buffering a whole download.
+        await sink.flush();
       }
       await sink.flush();
       await sink.close();

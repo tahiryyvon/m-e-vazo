@@ -6,6 +6,15 @@ import 'package:guitar_lyrics_player/models/chord_event.dart';
 import 'package:guitar_lyrics_player/services/stream_chord_analyzer.dart';
 
 void main() {
+  test('rejects oversized audio before invoking analysis', () async {
+    final analyzer = StreamChordAnalyzer(
+      maxDownloadBytes: 2,
+      createClient: () => MockClient((_) async => http.Response.bytes([1, 2, 3], 200)),
+      analyzeFile: (_) async => fail('Oversized download must not be analyzed'),
+    );
+    await expectLater(analyzer.analyze(Uri.parse('http://127.0.0.1/audio'),
+        isCurrent: () => true), throwsStateError);
+  });
   final uri = Uri.parse('http://127.0.0.1/audio_test.m4a');
   test('analyzes complete playback stream and removes temporary file',
       () async {

@@ -8,6 +8,21 @@ const sample = '<title>Test Band – Test Song Lyrics</title>'
     'Another invented line, with &amp; punctuation</div>';
 
 void main() {
+  // Each redirect hop is re-checked by the public client's connection
+  // factory (HTTPS + public IP, see public_web_client_test); here we check
+  // the hop count is bounded and a redirect answer never yields lyrics.
+  test('bounds redirects and never reads lyrics from a redirect answer', () async {
+    final seen = <Uri>[];
+    final service = WebLyricsService(client: MockClient((request) async {
+      seen.add(request.url);
+      expect(request.maxRedirects, lessThanOrEqualTo(3));
+      expect(request.url.host, isNot('127.0.0.1'));
+      return http.Response('', 302, headers: {'location': 'http://127.0.0.1/private'});
+    }));
+    addTearDown(service.dispose);
+    expect(await service.search('Test Song', 'Test Band', isCurrent: () => true), isNull);
+    expect(seen, isNotEmpty);
+  });
   test('parses Genius lines without timestamps and preserves source', () {
     final uri = Uri.parse('https://genius.com/test-song-lyrics');
     final lines = WebLyricsService.parsePage(sample, uri, 'Test Song', 'Test Band')!;

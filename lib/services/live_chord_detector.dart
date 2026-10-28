@@ -35,15 +35,36 @@ class LiveChordDetector {
   LiveChordDetector({required this.sampleRate, double windowSeconds = 2.0})
       : _ring = Float32List((sampleRate * windowSeconds).round());
 
-  /// Appends little-endian 16-bit mono PCM.
+  /// Low byte of a sample split across two chunks, or null.
+  int? _pendingByte;
+
+  /// Appends little-endian 16-bit mono PCM. Chunks are not guaranteed to
+  /// hold whole samples: an odd trailing byte is kept for the next chunk so
+  /// the stream never shifts by one byte (which would turn audio into noise).
   void feedPcm16(Uint8List bytes) {
-    final data = ByteData.sublistView(bytes);
-    final count = bytes.length ~/ 2;
-    for (var i = 0; i < count; i++) {
-      _ring[_write] = data.getInt16(i * 2, Endian.little) / 32768.0;
-      _write = (_write + 1) % _ring.length;
+    if (bytes.isEmpty) return;
+    var offset = 0;
+    var count = 0;
+    if (_pendingByte != null) {
+      final value = (_pendingByte! | (bytes[0] << 8)).toSigned(16);
+      _push(value / 32768.0);
+      _pendingByte = null;
+      offset = 1;
+      count++;
     }
+    final data = ByteData.sublistView(bytes);
+    final whole = (bytes.length - offset) ~/ 2;
+    for (var i = 0; i < whole; i++) {
+      _push(data.getInt16(offset + i * 2, Endian.little) / 32768.0);
+    }
+    count += whole;
+    if ((bytes.length - offset).isOdd) _pendingByte = bytes[bytes.length - 1];
     _filled = math.min(_ring.length, _filled + count);
+  }
+
+  void _push(double sample) {
+    _ring[_write] = sample;
+    _write = (_write + 1) % _ring.length;
   }
 
   /// Copy of the window in chronological order (oldest first).

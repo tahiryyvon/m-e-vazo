@@ -25,6 +25,18 @@
 - Android/iOS : le curseur de volume pilote le volume média du système (`volume_controller`) et suit les touches physiques.
 - Paroles : troisième niveau via description et commentaires YouTube.
 
+## Audit sécurité / performance du 28 octobre
+
+- Proxy audio local : jeton secret aléatoire dans l'URL, GET/HEAD uniquement, identifiant vidéo validé, délais d'attente, cache des flux borné (64 entrées, 15 min).
+- Pages web tierces (paroles) : client `createPublicWebClient` qui n'accepte que HTTPS sur le port 443 vers des adresses IP publiques, connexion directe à l'IP vérifiée (pas de rebinding DNS), TLS validé contre le nom d'hôte, redirections bornées à 3 et revérifiées à chaque saut, corps limité à 2 Mo lu en flux.
+- Correctif critique : la première version de ce client ouvrait un socket non chiffré vers le port 443, ce qui cassait toutes les recherches web de paroles. Il ouvre désormais un `SecureSocket` (vérifié en réel : Genius, GitHub).
+- Téléchargements d'analyse et fichiers WAV limités à 256 Mo ; écritures disque en flux.
+- `YoutubeService` : identifiants vidéo validés (ils servent dans des noms de fichiers), URL de flux expirées après 2 h et limitées à 64, cinq fichiers temporaires au plus sur disque.
+- Micro : un découpage du flux sur un nombre impair d'octets ne décale plus les échantillons.
+- Import de dossier plafonné (5 000 titres, 50 000 entrées parcourues) ; dossiers illisibles ignorés.
+- Bibliothèque : écritures sérialisées, liste rendue paresseusement (tient des milliers de titres).
+- Optimisation tentée puis abandonnée : réécriture de la boucle FFT de l'analyse d'accords. Résultat identique mais 33 % plus lente en mesure ; code d'origine conservé.
+
 ## Limites connues
 
 - **Web** : recherche YouTube et repli web des paroles bloqués par CORS dans le navigateur (message affiché, bouton « Rechercher sur le Web » ouvre Google). Pas d'analyse d'accords audio sur Web. Fichiers importés valables uniquement pour la session (URL blob).

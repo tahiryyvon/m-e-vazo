@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
@@ -19,7 +20,10 @@ class LocalAudioProxy {
   HttpServer? _server;
   final YoutubeExplode _yt = YoutubeExplode();
   int _port = 0;
-  bool _isStarting = false;
+  Future<int>? _starting;
+  final String _token = List.generate(32, (_) => Random.secure().nextInt(256))
+      .map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  final Map<String, DateTime> _cachedAt = {};
 
   // Stream info cache to avoid multiple manifest lookups for the same song
   final Map<String, StreamInfo> _streamInfoCache = {};
@@ -30,14 +34,10 @@ class LocalAudioProxy {
   /// Starts the local HTTP proxy server if not already running.
   Future<int> start() async {
     if (_server != null) return _port;
-    if (_isStarting) {
-      while (_isStarting) {
-        await Future.delayed(const Duration(milliseconds: 50));
-      }
-      return _port;
-    }
+    return _starting ??= _bind();
+  }
 
-    _isStarting = true;
+  Future<int> _bind() async {
     try {
       _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       _port = _server!.port;
@@ -47,21 +47,40 @@ class LocalAudioProxy {
       });
     } catch (e) {
       debugPrint('[LocalAudioProxy] Failed to bind server: $e');
+      rethrow;
     } finally {
-      _isStarting = false;
+      _starting = null;
     }
     return _port;
   }
 
   /// Returns the loopback streaming URL for [videoId] with .m4a extension.
   Future<String> getProxyStreamUrl(String videoId) async {
+    if (!RegExp(r'^[a-zA-Z0-9_-]{11}$').hasMatch(videoId)) {
+      throw ArgumentError.value(videoId, 'videoId', 'Invalid YouTube video ID');
+    }
     final serverPort = await start();
     // Warm up manifest fetch in background so HEAD/GET has it ready
     unawaited(_getStreamInfo(videoId));
-    return 'http://127.0.0.1:$serverPort/audio_$videoId.m4a';
+    return 'http://127.0.0.1:$serverPort/$_token/audio_$videoId.m4a';
+  }
+
+  void _cache(String id, StreamInfo stream) {
+    if (_streamInfoCache.length >= 64) {
+      final oldest = _streamInfoCache.keys.first;
+      _streamInfoCache.remove(oldest);
+      _cachedAt.remove(oldest);
+    }
+    _streamInfoCache[id] = stream;
+    _cachedAt[id] = DateTime.now();
   }
 
   Future<StreamInfo?> _getStreamInfo(String videoId) async {
+    final cachedAt = _cachedAt[videoId];
+    if (cachedAt != null && DateTime.now().difference(cachedAt) > const Duration(minutes: 15)) {
+      _streamInfoCache.remove(videoId);
+      _cachedAt.remove(videoId);
+    }
     if (_streamInfoCache.containsKey(videoId)) {
       return _streamInfoCache[videoId];
     }
@@ -71,7 +90,8 @@ class LocalAudioProxy {
 
     final future = () async {
       try {
-        final manifest = await _yt.videos.streamsClient.getManifest(videoId);
+        final manifest = await _yt.videos.streamsClient.getManifest(videoId)
+            .timeout(const Duration(seconds: 20));
 
         // 1. Prioritize muxed MP4 (e.g. 360p itag 18):
         // YouTube attaches ratebypass=yes to muxed streams, which completely eliminates
@@ -82,7 +102,7 @@ class LocalAudioProxy {
             .toList();
         if (muxedMp4.isNotEmpty) {
           final selected = muxedMp4.first; // 360p / fast & lightweight
-          _streamInfoCache[videoId] = selected;
+          _cache(videoId, selected);
           return selected;
         }
 
@@ -93,7 +113,7 @@ class LocalAudioProxy {
                   .where((s) => s.container.name.toLowerCase() == 'mp4')
                   .firstOrNull ??
               audioStreams.withHighestBitrate();
-          _streamInfoCache[videoId] = selected;
+          _cache(videoId, selected);
           return selected;
         }
 
@@ -112,11 +132,18 @@ class LocalAudioProxy {
 
   void _handleRequest(HttpRequest request) async {
     final path = request.uri.path;
-    final match = RegExp(r'/audio_([a-zA-Z0-9_\-]+)\.m4a').firstMatch(path);
+    if (!path.startsWith('/$_token/') ||
+        (request.method != 'GET' && request.method != 'HEAD')) {
+      request.response.statusCode = HttpStatus.notFound;
+      try { await request.response.close(); } catch (_) {}
+      return;
+    }
+    final match = RegExp(r'^audio_([a-zA-Z0-9_-]{11})\.m4a$')
+        .firstMatch(path.substring(_token.length + 2));
     final videoId = match?.group(1);
     final clientRange = request.headers.value('range');
 
-    debugPrint('[LocalAudioProxy] >>> Incoming ${request.method} $path (Range: $clientRange)');
+    debugPrint('[LocalAudioProxy] Incoming ${request.method} (Range: $clientRange)');
 
     if (videoId == null || videoId.isEmpty) {
       request.response.statusCode = HttpStatus.notFound;
@@ -124,6 +151,7 @@ class LocalAudioProxy {
       return;
     }
 
+    http.Client? client;
     try {
       final selectedStream = await _getStreamInfo(videoId);
       if (selectedStream == null) {
@@ -158,8 +186,8 @@ class LocalAudioProxy {
         ytRequest.headers['Range'] = clientRange;
       }
 
-      final client = http.Client();
-      final streamedResponse = await client.send(ytRequest);
+      client = http.Client();
+      final streamedResponse = await client.send(ytRequest).timeout(const Duration(seconds: 30));
       debugPrint('[LocalAudioProxy] Upstream YouTube status: ${streamedResponse.statusCode}, contentLength: ${streamedResponse.contentLength}, contentRange: ${streamedResponse.headers["content-range"]}');
 
       if (streamedResponse.statusCode != HttpStatus.ok &&
@@ -187,7 +215,7 @@ class LocalAudioProxy {
       // Stream chunks with immediate flush so playback starts instantly
       int totalBytesSent = 0;
       try {
-        await for (final chunk in streamedResponse.stream) {
+        await for (final chunk in streamedResponse.stream.timeout(const Duration(seconds: 30))) {
           totalBytesSent += chunk.length;
           request.response.add(chunk);
           await request.response.flush();
@@ -195,8 +223,6 @@ class LocalAudioProxy {
         debugPrint('[LocalAudioProxy] Successfully sent $totalBytesSent bytes to client');
       } catch (e) {
         debugPrint('[LocalAudioProxy] Client disconnected after $totalBytesSent bytes ($e)');
-      } finally {
-        client.close();
       }
 
       try { await request.response.close(); } catch (_) {}
@@ -206,6 +232,8 @@ class LocalAudioProxy {
         request.response.statusCode = HttpStatus.internalServerError;
         await request.response.close();
       } catch (_) {}
+    } finally {
+      client?.close();
     }
   }
 
@@ -213,6 +241,7 @@ class LocalAudioProxy {
     _server?.close(force: true);
     _server = null;
     _streamInfoCache.clear();
+    _cachedAt.clear();
     _inFlightFetches.clear();
     _yt.close();
   }

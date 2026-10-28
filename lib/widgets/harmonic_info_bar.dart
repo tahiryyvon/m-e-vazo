@@ -9,8 +9,9 @@ import 'chord_diagram.dart';
 /// 2. Complete list of all chords in the song with active chord highlighting & diagram preview
 class HarmonicInfoBar extends StatelessWidget {
   final MusicPlayerController controller;
+  final bool compact;
 
-  const HarmonicInfoBar({super.key, required this.controller});
+  const HarmonicInfoBar({super.key, required this.controller, this.compact = false});
 
   @override
   Widget build(BuildContext context) {
@@ -31,10 +32,10 @@ class HarmonicInfoBar extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(controller.chordStatus,
+          if (!compact) Text(controller.chordStatus,
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.white70, fontSize: 11)),
-          const SizedBox(height: 6),
+          if (!compact) const SizedBox(height: 6),
           // ── Top Row: Key, Capo ──────────────────────
           Wrap(
             alignment: WrapAlignment.center,
@@ -57,7 +58,7 @@ class HarmonicInfoBar extends StatelessWidget {
                     const Icon(Icons.music_note_rounded,
                         size: 14, color: Color(0xFFFF8C00)),
                     const SizedBox(width: 4),
-                    Text(
+                    Flexible(child: Text(
                       'TONALITÉ ≈ ${key != null && key.isNotEmpty ? key : '?'}',
                       style: const TextStyle(
                         color: Color(0xFFFFB347),
@@ -65,7 +66,7 @@ class HarmonicInfoBar extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.8,
                       ),
-                    ),
+                    )),
                   ],
                 ),
               ),
@@ -89,7 +90,7 @@ class HarmonicInfoBar extends StatelessWidget {
                 child: Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  constraints: const BoxConstraints(minHeight: 44),
+                  constraints: const BoxConstraints(minHeight: 48),
                   decoration: BoxDecoration(
                     color: hasCapo
                         ? const Color(0xFF00E676).withValues(alpha: 0.15)
@@ -112,10 +113,10 @@ class HarmonicInfoBar extends StatelessWidget {
                             : Colors.white.withValues(alpha: 0.4),
                       ),
                       const SizedBox(width: 4),
-                      Text(
+                      Flexible(child: Text(
                         hasCapo
                             ? 'CAPO: $capo ▾'
-                            : 'CAPO: ${capo == null ? 'à choisir' : '0'} ▾',
+                            : 'CAPO: ${capo == null ? (compact ? '?' : 'à choisir') : '0'} ▾',
                         style: TextStyle(
                           color: hasCapo
                               ? const Color(0xFF69F0AE)
@@ -124,7 +125,7 @@ class HarmonicInfoBar extends StatelessWidget {
                           fontWeight: FontWeight.w800,
                           letterSpacing: 0.8,
                         ),
-                      ),
+                      )),
                     ],
                   ),
                 ),
@@ -134,7 +135,7 @@ class HarmonicInfoBar extends StatelessWidget {
           ),
 
           // ── Bottom Row: All Chords in the Song ─────────────
-          if (allChords.isNotEmpty) ...[
+          if (!compact && allChords.isNotEmpty) ...[
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
