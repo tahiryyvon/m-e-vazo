@@ -22,6 +22,7 @@ import '../services/screen_awake_service.dart';
 import '../services/song_key_estimator.dart';
 import '../services/web_lyrics_service.dart';
 import '../services/youtube_lyrics_service.dart';
+import '../services/audio_tags.dart';
 
 /// All possible playback states
 enum PlaybackState {
@@ -466,8 +467,26 @@ class MusicPlayerController extends ChangeNotifier {
       // Lyrics never delay playback: LRCLIB is quick, but the web-search
       // fallback can take a while, so they are applied whenever they arrive.
       _isLoadingLyrics = true;
-      unawaited(_loadLyrics(parsed.title, parsed.artist, song.durationSeconds, generation,
-          videoId: song.isLocal || song.isAsset ? null : song.id));
+      unawaited(() async {
+        var title = parsed.title;
+        var artist = parsed.artist;
+        var duration = song.durationSeconds;
+        // Local files: the embedded tags give LRCLIB the real title, artist
+        // and duration; the file name is only a fallback guess.
+        final path = song.localPath;
+        if (song.isLocal && !kIsWeb && path != null && !path.startsWith('content://')) {
+          final tags = await AudioTagReader.read(path);
+          if (tags != null) {
+            if (tags.title != null) title = tags.title!;
+            if (tags.artist != null) artist = tags.artist!;
+            duration ??= tags.durationSeconds;
+            debugPrint('[MusicPlayerController] Local tags: "$artist" - "$title"'
+                '${duration != null ? ' (${duration}s)' : ''}');
+          }
+        }
+        await _loadLyrics(title, artist, duration, generation,
+            videoId: song.isLocal || song.isAsset ? null : song.id);
+      }());
       // Chords are prepared before playback so they are in sync from 0:00.
       await _loadChords(song, generation: generation);
       if (generation != _metadataGeneration) return;
@@ -711,6 +730,8 @@ class MusicPlayerController extends ChangeNotifier {
       {String? videoId}) async {
     try {
       bool current() => generation == _metadataGeneration;
+      // LRCLIB is always the first source, for online and local songs alike.
+      debugPrint('[MusicPlayerController] Lyrics 1/3: LRCLIB');
       var lyrics = await _lyricsService.fetchSyncedLyrics(
         trackName: title,
         artistName: artist,
@@ -719,14 +740,14 @@ class MusicPlayerController extends ChangeNotifier {
       if (!current()) return;
       if (lyrics == null || lyrics.isEmpty) {
         // Not on LRCLIB: take the first web search result, even unsynced.
-        debugPrint('[MusicPlayerController] LRCLIB has no lyrics, searching the web…');
+        debugPrint('[MusicPlayerController] Lyrics 2/3: LRCLIB has nothing, lyrics sites…');
         lyrics = await _webLyrics.search(title, artist, isCurrent: current);
       }
       if (!current()) return;
       if ((lyrics == null || lyrics.isEmpty) && !kIsWeb) {
         // Deeper search: the YouTube description or a comment often holds
         // the words when no lyrics site has the song.
-        debugPrint('[MusicPlayerController] No lyrics site has it, reading YouTube description/comments…');
+        debugPrint('[MusicPlayerController] Lyrics 3/3: YouTube description/comments…');
         lyrics = await _youtubeLyrics.search(
             videoId: videoId, title: title, artist: artist, isCurrent: current);
       }

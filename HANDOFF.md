@@ -37,6 +37,13 @@
 - Bibliothèque : écritures sérialisées, liste rendue paresseusement (tient des milliers de titres).
 - Optimisation tentée puis abandonnée : réécriture de la boucle FFT de l'analyse d'accords. Résultat identique mais 33 % plus lente en mesure ; code d'origine conservé.
 
+## Paroles des fichiers locaux (28 octobre)
+
+- LRCLIB reste la première source pour tous les morceaux. Pour un fichier local, la recherche échouait toujours (artiste « Unknown Artist », pas de durée) et l'app passait directement aux sites web.
+- Les tags ID3 (titre, artiste, durée) des MP3 sont lus avant la recherche (`AudioTagReader`). Les noms de fichiers sont nettoyés (numéros de piste, tirets bas, tirets longs).
+- Sans artiste, LRCLIB cherche par titre seul et retient l'artiste majoritaire ; une durée connue filtre à ±5 s.
+- Limite : un titre ambigu sans artiste peut tomber sur une autre version (ex. « La Vie en rose » en anglais). Les tags M4A/FLAC ne sont pas encore lus.
+
 ## Limites connues
 
 - **Web** : recherche YouTube et repli web des paroles bloqués par CORS dans le navigateur (message affiché, bouton « Rechercher sur le Web » ouvre Google). Pas d'analyse d'accords audio sur Web. Fichiers importés valables uniquement pour la session (URL blob).

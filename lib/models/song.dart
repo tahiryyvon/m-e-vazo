@@ -57,10 +57,11 @@ class Song {
         ? fileName.substring(0, fileName.lastIndexOf('.'))
         : fileName;
 
-    // Try to split "Artist - Title" pattern
-    final parts = nameWithoutExt.split(' - ');
+    final cleaned = cleanFileName(nameWithoutExt);
+    // Try to split "Artist - Title" pattern (hyphen, en dash or em dash)
+    final parts = cleaned.split(RegExp(r'\s+[-–—]\s+'));
     final artist = parts.length >= 2 ? parts.first.trim() : 'Unknown Artist';
-    final title = parts.length >= 2 ? parts.sublist(1).join(' - ').trim() : nameWithoutExt;
+    final title = parts.length >= 2 ? parts.sublist(1).join(' - ').trim() : cleaned;
 
     return Song(
       id: 'local_$path',
@@ -69,6 +70,18 @@ class Song {
       isLocal: true,
       localPath: path,
     );
+  }
+
+  /// Turns a file name into a searchable "Artist - Title": underscores and
+  /// repeated spaces become single spaces, a leading track number
+  /// ("01 ", "1. ", "03 - ", "12) ") is dropped. Titles that merely start
+  /// with a number ("7 Years", "22") are kept intact.
+  static String cleanFileName(String name) {
+    var value = name.replaceAll('_', ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+    final track = RegExp(r'^(\d{1,3}\s*[-–—]\s+|\d{1,3}[.)]\s*|0\d\s+)');
+    final stripped = value.replaceFirst(track, '').trim();
+    if (stripped.isNotEmpty) value = stripped;
+    return value;
   }
 
   /// Creates a Song from an embedded asset track (e.g. demo song)
